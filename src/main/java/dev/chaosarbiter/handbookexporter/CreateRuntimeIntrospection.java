@@ -10,10 +10,13 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -134,37 +137,52 @@ final class CreateRuntimeIntrospection {
         try {
             Class<?> configsClass = Class.forName(CONFIG_CLASS);
             Object serverConfig = configsClass.getMethod("server").invoke(null);
-            for (Field sectionField : sortedPublicFields(serverConfig.getClass())) {
-                Object section = sectionField.get(serverConfig);
-                if (section == null) {
-                    continue;
-                }
-                for (Field optionField : sortedPublicFields(section.getClass())) {
-                    Object configValue = optionField.get(section);
-                    Method getter = zeroArgumentMethod(configValue, "get");
-                    if (getter == null) {
-                        continue;
-                    }
-                    Object effective = getter.invoke(configValue);
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("mod_id", "create");
-                    row.put("config_scope", "server");
-                    row.put("config_path", "server." + sectionField.getName());
-                    row.put("config_class", section.getClass().getSimpleName());
-                    row.put("field_name", optionField.getName());
-                    row.put("effective_value", jsonScalar(effective));
-                    row.put("runtime_value_class", effective == null
-                            ? null
-                            : effective.getClass().getName());
-                    row.put("unit_hint", unitHint(optionField.getName()));
-                    row.put("evidence_status", "installed_runtime_confirmed");
-                    row.put("source_api", CONFIG_CLASS + ".server()");
-                    rows.add(row);
-                }
-            }
+            Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+            collectConfigObject(serverConfig, "server", rows, visited);
             diagnostics.add(status("server_config", "ok", rows.size(), null));
         } catch (ReflectiveOperationException | RuntimeException exception) {
             diagnostics.add(status("server_config", "error", rows.size(), exception));
+        }
+    }
+
+    private void collectConfigObject(
+            Object config,
+            String path,
+            List<Map<String, ?>> rows,
+            Set<Object> visited
+    ) throws IllegalAccessException, InvocationTargetException {
+        if (config == null || !visited.add(config)) {
+            return;
+        }
+        for (Field field : sortedPublicFields(config.getClass())) {
+            Object fieldValue = field.get(config);
+            if (fieldValue == null) {
+                continue;
+            }
+            Method getter = zeroArgumentMethod(fieldValue, "get");
+            if (getter != null) {
+                Object effective = getter.invoke(fieldValue);
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("mod_id", "create");
+                row.put("config_scope", "server");
+                row.put("config_path", path);
+                row.put("config_class", config.getClass().getSimpleName());
+                row.put("field_name", field.getName());
+                row.put("effective_value", jsonScalar(effective));
+                row.put("runtime_value_class", effective == null
+                        ? null
+                        : effective.getClass().getName());
+                row.put("unit_hint", unitHint(field.getName()));
+                row.put("evidence_status", "installed_runtime_confirmed");
+                row.put("source_api", CONFIG_CLASS + ".server()");
+                rows.add(row);
+                continue;
+            }
+            if (fieldValue.getClass().getName().startsWith(
+                    "com.simibubi.create.infrastructure.config.C"
+            )) {
+                collectConfigObject(fieldValue, path + "." + field.getName(), rows, visited);
+            }
         }
     }
 
