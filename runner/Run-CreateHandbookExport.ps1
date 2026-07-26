@@ -22,8 +22,8 @@ $ServerPackFileName = "All_of_Create_-_Aeronautics_v2.1_serverpack.zip"
 $ServerPackSha256 = "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b"
 $ServerPackBytes = 314214774
 $MinecraftEulaUrl = "https://www.minecraft.net/eula"
-$ExporterJarName = "create_runtime_exporter-0.1.2.jar"
-$ExporterHashFileName = "create_runtime_exporter-0.1.2.sha256"
+$ExporterJarName = "create_runtime_exporter-0.1.3.jar"
+$ExporterHashFileName = "create_runtime_exporter-0.1.3.sha256"
 $ExpectedMinecraftVersion = "1.21.1"
 $ExpectedNeoForgeVersion = "21.1.233"
 $ExpectedPackVersion = "v2.1"
@@ -232,6 +232,7 @@ $OutputRoot = Get-NormalizedPath -Path $OutputRoot
 [System.IO.Directory]::CreateDirectory($OutputRoot) | Out-Null
 
 $script:RunLogPath = Join-Path $logsRoot "create-export-$runId.log"
+$script:MinecraftLogPath = Join-Path $logsRoot "create-export-$runId-minecraft.log"
 Start-Transcript -LiteralPath $script:RunLogPath | Out-Null
 $script:TranscriptStarted = $true
 
@@ -420,6 +421,17 @@ try {
     }
 }
 Write-Status "The stock server process exited with code $serverExitCode."
+$serverLatestLog = Join-Path $runDirectory "logs\latest.log"
+if (Test-Path -LiteralPath $serverLatestLog -PathType Leaf) {
+    try {
+        Copy-Item -LiteralPath $serverLatestLog -Destination $script:MinecraftLogPath -ErrorAction Stop
+        Write-Status "Minecraft/NeoForge log preserved: $script:MinecraftLogPath"
+    } catch {
+        Write-Warning "Could not preserve the Minecraft/NeoForge log: $($_.Exception.Message)"
+    }
+} else {
+    Write-Warning "The disposable server did not produce logs\latest.log."
+}
 
 Write-Stage -Number 6 -Title "Validate the runtime evidence" `
     -Detail "Checking for the exporter manifest, provenance, counts, and sample reconciliation."
@@ -483,6 +495,10 @@ Write-Host ""
 Write-Host "The verified server-pack download remains cached for later runs."
 Write-Host "Human-readable run log:"
 Write-Host $script:RunLogPath -ForegroundColor Yellow
+if (Test-Path -LiteralPath $script:MinecraftLogPath -PathType Leaf) {
+    Write-Host "Minecraft/NeoForge log:"
+    Write-Host $script:MinecraftLogPath -ForegroundColor Yellow
+}
 
 Stop-RunnerTranscript
 try {

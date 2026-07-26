@@ -61,6 +61,10 @@ Safety notes
 - Output uses a new timestamped directory and never overwrites an old export.
 - Successful disposable server runs are removed. A failed run is retained so
   its local log can be inspected.
+- Every run preserves both a runner transcript and, when produced, the
+  Minecraft/NeoForge `latest.log` under the local logs directory. These
+  diagnostic logs remain separate from the clean export ZIP because they may
+  contain Windows paths or the local account name.
 - A complete verified `.partial` server-pack download left by an interrupted
   or older run is recovered instead of downloaded again.
 - No textures, models, jars, worlds, player data, or credentials are placed

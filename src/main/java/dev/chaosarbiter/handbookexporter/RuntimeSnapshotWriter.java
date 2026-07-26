@@ -344,11 +344,16 @@ final class RuntimeSnapshotWriter {
     ) {
         Set<String> itemIds = items.stream().map(row -> (String) row.get("id")).collect(java.util.stream.Collectors.toSet());
         Set<String> blockIds = blocks.stream().map(row -> (String) row.get("id")).collect(java.util.stream.Collectors.toSet());
+        Set<String> expectedBlockIds = items.stream()
+                .map(row -> (String) row.get("block_id"))
+                .filter(id -> id != null)
+                .collect(java.util.stream.Collectors.toSet());
         List<String> missingItems = SAMPLE_IDS.stream().filter(id -> !itemIds.contains(id)).sorted().toList();
-        List<String> missingBlocks = SAMPLE_IDS.stream().filter(id -> !blockIds.contains(id)).sorted().toList();
+        List<String> missingBlocks = expectedBlockIds.stream().filter(id -> !blockIds.contains(id)).sorted().toList();
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("requested_ids", SAMPLE_IDS.stream().sorted().toList());
+        row.put("expected_block_ids", expectedBlockIds.stream().sorted().toList());
         row.put("found_item_ids", itemIds.stream().sorted().toList());
         row.put("found_block_ids", blockIds.stream().sorted().toList());
         row.put("missing_item_ids", missingItems);

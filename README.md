@@ -85,7 +85,8 @@ The runner:
   expected setup download before handing control to the stock server script;
 - emits `[HANDBOOK EXPORT]` progress lines for each runtime data-collection
   stage and reports record counts;
-- retains a human-readable transcript under
+- retains a human-readable runner transcript and the Minecraft/NeoForge
+  `latest.log` under
   `%LOCALAPPDATA%\CreateHandbookExporter\logs`;
 - never reads or changes the CurseForge client instance or Bisect server;
 - removes only a successful disposable run bearing its safety marker;
@@ -112,3 +113,15 @@ Full-namespace export additionally requires:
 
 The default remains the ten-item sample. Full scope has an additional
 interactive confirmation and exporter confirmation token.
+
+## Runtime diagnostics and sample reconciliation
+
+Version 0.1.3 preserves the PowerShell runner transcript and, when the stock
+server produces it, the Minecraft/NeoForge `latest.log`. Neither log is placed
+in the clean evidence ZIP because diagnostic output can contain local Windows
+paths or the local account name.
+
+Sample block reconciliation now expects block records only for requested items
+that actually declare a corresponding block ID. This prevents an item-only
+entry such as the Potato Cannon from being reported as a missing block while
+still detecting a genuinely absent block record.
