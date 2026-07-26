@@ -72,6 +72,8 @@ The runner:
 - downloads the official v2.1 CurseForge server pack and verifies its exact
   size and SHA-256 hash before extraction;
 - works only under `%LOCALAPPDATA%\CreateHandbookExporter`;
+- binds the disposable Minecraft server only to `127.0.0.1` on an ephemeral
+  port, with query and RCON disabled;
 - asks the user to review and explicitly accept the Minecraft EULA;
 - supplies the export settings through process-scoped environment variables;
 - creates a clean output ZIP under

@@ -32,6 +32,8 @@ Safety notes
 - The official server pack is locked to CurseForge project 1518930, file
   8478465, exact size 314,214,774 bytes, and an exact SHA-256 hash.
 - The exporter jar is verified against the checksum included in this bundle.
+- The disposable server binds only to 127.0.0.1 on an ephemeral port. Query
+  and RCON are disabled.
 - Output uses a new timestamped directory and never overwrites an old export.
 - Successful disposable server runs are removed. A failed run is retained so
   its local log can be inspected.

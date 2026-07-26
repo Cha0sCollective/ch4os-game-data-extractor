@@ -104,6 +104,28 @@ function Set-TemporaryVariable {
     )
 }
 
+function Set-TemporaryServerProperty {
+    param(
+        [Parameter(Mandatory = $true)][string]$PropertiesPath,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+
+    $content = [System.IO.File]::ReadAllText($PropertiesPath)
+    $pattern = "(?m)^" + [Regex]::Escape($Name) + "=.*$"
+    $replacement = "$Name=$Value"
+    if ([Regex]::IsMatch($content, $pattern)) {
+        $content = [Regex]::Replace($content, $pattern, $replacement, 1)
+    } else {
+        $content = $content.TrimEnd() + "`r`n" + $replacement + "`r`n"
+    }
+    [System.IO.File]::WriteAllText(
+        $PropertiesPath,
+        $content,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+}
+
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exporterJar = Join-Path $scriptDirectory $ExporterJarName
 $exporterHashPath = Join-Path $scriptDirectory $ExporterHashFileName
@@ -218,6 +240,7 @@ Expand-Archive -LiteralPath $ServerPackPath -DestinationPath $runDirectory
 $modsDirectory = Join-Path $runDirectory "mods"
 $startScript = Join-Path $runDirectory "start.ps1"
 $variablesPath = Join-Path $runDirectory "variables.txt"
+$serverPropertiesPath = Join-Path $runDirectory "server.properties"
 if (-not (Test-Path -LiteralPath $modsDirectory -PathType Container)) {
     throw "The verified server pack did not contain its expected mods directory."
 }
@@ -227,10 +250,19 @@ if (-not (Test-Path -LiteralPath $startScript -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $variablesPath -PathType Leaf)) {
     throw "The verified server pack did not contain variables.txt."
 }
+if (-not (Test-Path -LiteralPath $serverPropertiesPath -PathType Leaf)) {
+    throw "The verified server pack did not contain server.properties."
+}
 
 Copy-Item -LiteralPath $exporterJar -Destination (Join-Path $modsDirectory $ExporterJarName)
 Set-TemporaryVariable -VariablesPath $variablesPath -Name "WAIT_FOR_USER_INPUT" -Value "false"
 Set-TemporaryVariable -VariablesPath $variablesPath -Name "RESTART" -Value "false"
+Set-TemporaryServerProperty -PropertiesPath $serverPropertiesPath -Name "server-ip" -Value "127.0.0.1"
+Set-TemporaryServerProperty -PropertiesPath $serverPropertiesPath -Name "server-port" -Value "0"
+Set-TemporaryServerProperty -PropertiesPath $serverPropertiesPath -Name "enable-query" -Value "false"
+Set-TemporaryServerProperty -PropertiesPath $serverPropertiesPath -Name "enable-rcon" -Value "false"
+Set-TemporaryServerProperty -PropertiesPath $serverPropertiesPath -Name "max-players" -Value "1"
+Set-TemporaryServerProperty -PropertiesPath $serverPropertiesPath -Name "motd" -Value "Create Handbook Disposable Exporter"
 [System.IO.File]::WriteAllText(
     (Join-Path $runDirectory "eula.txt"),
     "eula=true`r`n",
@@ -249,6 +281,7 @@ $runtimeEnvironment = @{
 }
 
 Write-Step "Starting the isolated server. First run may download Java 21 and NeoForge support files."
+Write-Host "The disposable server is restricted to 127.0.0.1 on an ephemeral local port."
 foreach ($entry in $runtimeEnvironment.GetEnumerator()) {
     $previousEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key, "Process")
     [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
