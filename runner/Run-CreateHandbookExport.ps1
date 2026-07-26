@@ -22,8 +22,8 @@ $ServerPackFileName = "All_of_Create_-_Aeronautics_v2.1_serverpack.zip"
 $ServerPackSha256 = "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b"
 $ServerPackBytes = 314214774
 $MinecraftEulaUrl = "https://www.minecraft.net/eula"
-$ExporterJarName = "create_runtime_exporter-0.1.3.jar"
-$ExporterHashFileName = "create_runtime_exporter-0.1.3.sha256"
+$ExporterJarName = "create_runtime_exporter-0.2.0.jar"
+$ExporterHashFileName = "create_runtime_exporter-0.2.0.sha256"
 $ExpectedMinecraftVersion = "1.21.1"
 $ExpectedNeoForgeVersion = "21.1.233"
 $ExpectedPackVersion = "v2.1"
@@ -457,6 +457,23 @@ $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
 Write-Status "Observed $($provenance.counts.mods) loaded mods."
 Write-Status "Captured $($provenance.counts.items) items, $($provenance.counts.blocks) blocks, and $($provenance.counts.recipes) Create-related recipes."
 Write-Status "Captured $($provenance.counts.item_tag_memberships) item-tag and $($provenance.counts.block_tag_memberships) block-tag memberships."
+Write-Status "Captured $($provenance.counts.mechanics) effective mechanics facts and $($provenance.counts.effective_config_values) effective server settings."
+
+$diagnosticsPath = Join-Path $outputDirectory "introspection-diagnostics.jsonl"
+if (-not (Test-Path -LiteralPath $diagnosticsPath -PathType Leaf)) {
+    throw "Runtime export is incomplete: introspection-diagnostics.jsonl is missing."
+}
+$diagnosticErrors = @(
+    Get-Content -LiteralPath $diagnosticsPath |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        ForEach-Object { $_ | ConvertFrom-Json } |
+        Where-Object { $_.status -ne "ok" }
+)
+if ($diagnosticErrors.Count -gt 0) {
+    Write-Warning "Create runtime introspection reported $($diagnosticErrors.Count) subsystem error(s). The evidence and diagnostic logs are preserved for review."
+} else {
+    Write-Status "Create stress-registry and server-config introspection both completed successfully."
+}
 
 $reconciliationPath = Join-Path $outputDirectory "sample-reconciliation.json"
 if (-not (Test-Path -LiteralPath $reconciliationPath -PathType Leaf)) {

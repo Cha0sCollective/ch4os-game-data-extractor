@@ -88,21 +88,43 @@ final class RuntimeSnapshotWriter {
                 blockTags.size()
         );
 
-        progress(6, "Writing JSONL evidence files with non-overwriting writes.");
+        progress(6, "Reading effective Create stress registries and loaded server settings.");
+        CreateRuntimeIntrospection.IntrospectionResult introspection =
+                new CreateRuntimeIntrospection(inScope).collect();
+        progressCount("effective mechanics facts", introspection.mechanics().size());
+        progressCount("effective server configuration values", introspection.configs().size());
+
+        progress(7, "Writing JSONL evidence files with non-overwriting writes.");
         JsonFiles.writeJsonLines(output.resolve("mods.jsonl"), mods);
         JsonFiles.writeJsonLines(output.resolve("items.jsonl"), items);
         JsonFiles.writeJsonLines(output.resolve("blocks.jsonl"), blocks);
         JsonFiles.writeJsonLines(output.resolve("recipes.jsonl"), recipes);
         JsonFiles.writeJsonLines(output.resolve("item-tags.jsonl"), itemTags);
         JsonFiles.writeJsonLines(output.resolve("block-tags.jsonl"), blockTags);
+        JsonFiles.writeJsonLines(output.resolve("mechanics.jsonl"), introspection.mechanics());
+        JsonFiles.writeJsonLines(output.resolve("config-values.jsonl"), introspection.configs());
+        JsonFiles.writeJsonLines(
+                output.resolve("introspection-diagnostics.jsonl"),
+                introspection.diagnostics()
+        );
 
-        Map<String, Object> provenance = provenance(mods, items, blocks, recipes, itemTags, blockTags);
+        progress(8, "Writing provenance and sample reconciliation.");
+        Map<String, Object> provenance = provenance(
+                mods,
+                items,
+                blocks,
+                recipes,
+                itemTags,
+                blockTags,
+                introspection.mechanics(),
+                introspection.configs()
+        );
         JsonFiles.writeJson(output.resolve("provenance.json"), provenance);
 
         Map<String, Object> reconciliation = sampleReconciliation(items, blocks);
         JsonFiles.writeJson(output.resolve("sample-reconciliation.json"), reconciliation);
 
-        progress(7, "Hashing the completed evidence files.");
+        progress(9, "Hashing the completed evidence files.");
         List<Map<String, Object>> files = new ArrayList<>();
         try (var paths = Files.list(output)) {
             paths.filter(Files::isRegularFile)
@@ -125,14 +147,14 @@ final class RuntimeSnapshotWriter {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("format", "create-handbook-runtime-export-v1");
         manifest.put("files", files);
-        progress(8, "Writing the final manifest.");
+        progress(10, "Writing the final manifest.");
         JsonFiles.writeJson(output.resolve("manifest.json"), manifest);
-        LOGGER.info("[HANDBOOK EXPORT] All 8 collection stages completed.");
+        LOGGER.info("[HANDBOOK EXPORT] All 10 collection stages completed.");
         return provenance;
     }
 
     private void progress(int stage, String message) {
-        LOGGER.info("[HANDBOOK EXPORT] Data stage {}/8 - {}", stage, message);
+        LOGGER.info("[HANDBOOK EXPORT] Data stage {}/10 - {}", stage, message);
     }
 
     private void progressCount(String label, int count) {
@@ -306,7 +328,9 @@ final class RuntimeSnapshotWriter {
             List<Map<String, ?>> blocks,
             List<Map<String, ?>> recipes,
             List<Map<String, ?>> itemTags,
-            List<Map<String, ?>> blockTags
+            List<Map<String, ?>> blockTags,
+            List<Map<String, ?>> mechanics,
+            List<Map<String, ?>> configs
     ) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("format", "create-handbook-runtime-export-v1");
@@ -327,7 +351,9 @@ final class RuntimeSnapshotWriter {
                 "blocks", blocks.size(),
                 "recipes", recipes.size(),
                 "item_tag_memberships", itemTags.size(),
-                "block_tag_memberships", blockTags.size()
+                "block_tag_memberships", blockTags.size(),
+                "mechanics", mechanics.size(),
+                "effective_config_values", configs.size()
         ));
         return row;
     }

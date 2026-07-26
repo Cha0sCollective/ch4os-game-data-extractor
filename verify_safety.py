@@ -33,8 +33,11 @@ def main() -> int:
         "non-overwriting writes": "StandardOpenOption.CREATE_NEW",
         "automatic disposable shutdown": "server.halt(false)",
         "exporter progress prefix": "[HANDBOOK EXPORT]",
-        "exporter data stages": "Data stage {}/8",
+        "exporter data stages": "Data stage {}/10",
         "expected block reconciliation": '"expected_block_ids"',
+        "effective mechanics output": '"mechanics.jsonl"',
+        "effective config output": '"config-values.jsonl"',
+        "introspection diagnostics": '"introspection-diagnostics.jsonl"',
     }
     for label, needle in required.items():
         if needle not in java_text:
@@ -67,7 +70,7 @@ def main() -> int:
         "official server-pack project/file": "mods/1518930/files/8478465/download",
         "official server-pack hash": "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b",
         "official server-pack byte size": "314214774",
-        "exporter jar hash verification": "create_runtime_exporter-0.1.3.sha256",
+        "exporter jar hash verification": "create_runtime_exporter-0.2.0.sha256",
         "separate local working root": "CreateHandbookExporter",
         "disposable marker": ".handbook-disposable-instance",
         "loopback-only server": '"server-ip" -Value "127.0.0.1"',

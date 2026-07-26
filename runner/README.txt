@@ -35,7 +35,7 @@ When the exporter begins collecting data, look for lines beginning with:
 
   [HANDBOOK EXPORT]
 
-Those lines report each of the eight data-collection stages and the number of
+Those lines report each of the ten data-collection stages and the number of
 records found. A readable transcript of the whole process is retained under:
 
   %LOCALAPPDATA%\CreateHandbookExporter\logs

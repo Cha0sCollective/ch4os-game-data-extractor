@@ -17,6 +17,9 @@ The first pass exports:
 - default item stack limits, durability, rarity, and component IDs;
 - effective Create recipe headers after datapack loading;
 - resolved item and block tag memberships;
+- effective stress impact, stress capacity, and generated-RPM facts from
+  Create's loaded runtime registries;
+- effective values exposed by Create's loaded server configuration sections;
 - provenance, output hashes, and sample reconciliation.
 
 The sample entries are Shaft, Cogwheel, Mechanical Press, Mechanical Mixer,
@@ -24,8 +27,8 @@ Basin, Mechanical Pump, Fluid Tank, Steam Engine, Clipboard, and Potato
 Cannon.
 
 Creative tabs, localized client tooltips, baked models, textures, renderers,
-Create-specific stress values, inventories, and fluid capacities are
-deliberately deferred until this server-side evidence is validated.
+inventories, and fluid capacities remain deferred. Model and texture metadata
+is captured separately from pinned source without redistributing raw assets.
 
 ## Safety contract
 
@@ -83,8 +86,8 @@ The runner:
   `%USERPROFILE%\Documents\Create-Handbook-Exports`;
 - reports eight numbered, timestamped runner stages and explains every
   expected setup download before handing control to the stock server script;
-- emits `[HANDBOOK EXPORT]` progress lines for each runtime data-collection
-  stage and reports record counts;
+- emits `[HANDBOOK EXPORT]` progress lines for each of ten runtime
+  data-collection stages and reports record counts;
 - retains a human-readable runner transcript and the Minecraft/NeoForge
   `latest.log` under
   `%LOCALAPPDATA%\CreateHandbookExporter\logs`;
@@ -116,7 +119,7 @@ interactive confirmation and exporter confirmation token.
 
 ## Runtime diagnostics and sample reconciliation
 
-Version 0.1.3 preserves the PowerShell runner transcript and, when the stock
+Version 0.2.0 preserves the PowerShell runner transcript and, when the stock
 server produces it, the Minecraft/NeoForge `latest.log`. Neither log is placed
 in the clean evidence ZIP because diagnostic output can contain local Windows
 paths or the local account name.
@@ -125,3 +128,9 @@ Sample block reconciliation now expects block records only for requested items
 that actually declare a corresponding block ID. This prevents an item-only
 entry such as the Potato Cannon from being reported as a missing block while
 still detecting a genuinely absent block record.
+
+The 0.2.0 evidence ZIP also contains `mechanics.jsonl`,
+`config-values.jsonl`, and `introspection-diagnostics.jsonl`. The mechanics
+records come from Create's effective runtime stress registries; the
+configuration records come from the loaded server config objects. Diagnostic
+rows make a reflection mismatch visible without discarding the rest of a run.
