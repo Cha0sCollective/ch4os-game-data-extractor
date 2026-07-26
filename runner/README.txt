@@ -10,14 +10,22 @@ server. It does not inspect or modify your CurseForge client or Bisect server.
 Run it
 ------
 1. Extract the entire downloaded artifact ZIP into a normal folder.
-2. Double-click Run-CreateHandbookExport.cmd.
+2. Choose a launcher:
+   - Double-click Run-CreateHandbookExport.cmd for the ten-item sample.
+   - Double-click Run-Full-CreateHandbookExport.cmd for every registered
+     Create item and block supported by the exporter.
 3. Review the Minecraft EULA link shown by the runner.
 4. Type I ACCEPT only if you accept the EULA. Capitalization and accidental
    surrounding or repeated spaces are ignored.
 5. Wait. The first run downloads and verifies the official v2.1 server pack
    (about 300 MB), and the stock server scripts may install Java 21.
-6. When Explorer opens, upload the selected create-6.0.10-sample-*.zip file
-   in your ChatGPT conversation.
+6. When Explorer opens, upload the selected create-6.0.10-*.zip file and the
+   two create-export-*.log files with the same run ID in your ChatGPT
+   conversation.
+
+Both launchers invoke Windows PowerShell with an execution-policy bypass for
+this script only. They do not change the machine's persistent PowerShell
+execution policy.
 
 Run this as your normal Windows user; administrator privileges are not needed.
 If Java 21 must be installed system-wide in a restricted development
@@ -37,9 +45,8 @@ When the exporter begins collecting data, look for lines beginning with:
   [HANDBOOK EXPORT]
 
 Those lines report each of the ten data-collection stages and the number of
-records found. A readable transcript of the whole process is retained under:
-
-  %LOCALAPPDATA%\CreateHandbookExporter\logs
+records found. A readable transcript of the whole process and the preserved
+Minecraft/NeoForge log are placed beside the clean result ZIP.
 
 Expected locations
 ------------------
@@ -47,9 +54,7 @@ Expected locations
   %LOCALAPPDATA%\CreateHandbookExporter\cache
 - Disposable server runs:
   %LOCALAPPDATA%\CreateHandbookExporter\runs
-- Human-readable runner logs:
-  %LOCALAPPDATA%\CreateHandbookExporter\logs
-- Clean export ZIPs:
+- Clean export ZIPs and matching diagnostic logs:
   %USERPROFILE%\Documents\Create-Handbook-Exports
 
 Safety notes
@@ -63,9 +68,9 @@ Safety notes
 - Successful disposable server runs are removed. A failed run is retained so
   its local log can be inspected.
 - Every run preserves both a runner transcript and, when produced, the
-  Minecraft/NeoForge `latest.log` under the local logs directory. These
-  diagnostic logs remain separate from the clean export ZIP because they may
-  contain Windows paths or the local account name.
+  Minecraft/NeoForge `latest.log` beside the clean export ZIP. These diagnostic
+  logs remain outside the ZIP because they may contain Windows paths or the
+  local account name.
 - A complete verified `.partial` server-pack download left by an interrupted
   or older run is recovered instead of downloaded again.
 - No textures, models, jars, worlds, player data, or credentials are placed
@@ -81,5 +86,5 @@ The PowerShell script accepts:
   -KeepWorkDirectory
   -ValidateOnly
 
-The default sample scope is the review gate. Do not use full scope until the
-sample export has been inspected.
+The default script scope remains `sample`; the full launcher explicitly passes
+`-Scope full`.
