@@ -214,7 +214,6 @@ if ([string]::IsNullOrWhiteSpace($localAppData)) {
 $runnerRoot = Join-Path $localAppData "CreateHandbookExporter"
 $cacheRoot = Join-Path $runnerRoot "cache"
 $runsRoot = Join-Path $runnerRoot "runs"
-$logsRoot = Join-Path $runnerRoot "logs"
 $runId = [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
@@ -228,11 +227,10 @@ $OutputRoot = Get-NormalizedPath -Path $OutputRoot
 
 [System.IO.Directory]::CreateDirectory($cacheRoot) | Out-Null
 [System.IO.Directory]::CreateDirectory($runsRoot) | Out-Null
-[System.IO.Directory]::CreateDirectory($logsRoot) | Out-Null
 [System.IO.Directory]::CreateDirectory($OutputRoot) | Out-Null
 
-$script:RunLogPath = Join-Path $logsRoot "create-export-$runId.log"
-$script:MinecraftLogPath = Join-Path $logsRoot "create-export-$runId-minecraft.log"
+$script:RunLogPath = Join-Path $OutputRoot "create-export-$runId.log"
+$script:MinecraftLogPath = Join-Path $OutputRoot "create-export-$runId-minecraft.log"
 Start-Transcript -LiteralPath $script:RunLogPath | Out-Null
 $script:TranscriptStarted = $true
 
