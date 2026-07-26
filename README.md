@@ -78,6 +78,12 @@ The runner:
 - supplies the export settings through process-scoped environment variables;
 - creates a clean output ZIP under
   `%USERPROFILE%\Documents\Create-Handbook-Exports`;
+- reports eight numbered, timestamped runner stages and explains every
+  expected setup download before handing control to the stock server script;
+- emits `[HANDBOOK EXPORT]` progress lines for each runtime data-collection
+  stage and reports record counts;
+- retains a human-readable transcript under
+  `%LOCALAPPDATA%\CreateHandbookExporter\logs`;
 - never reads or changes the CurseForge client instance or Bisect server;
 - removes only a successful disposable run bearing its safety marker;
 - retains failed runs locally for diagnosis.

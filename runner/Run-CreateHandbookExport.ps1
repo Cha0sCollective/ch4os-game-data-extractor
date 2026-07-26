@@ -22,16 +22,51 @@ $ServerPackFileName = "All_of_Create_-_Aeronautics_v2.1_serverpack.zip"
 $ServerPackSha256 = "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b"
 $ServerPackBytes = 314214774
 $MinecraftEulaUrl = "https://www.minecraft.net/eula"
-$ExporterJarName = "create_runtime_exporter-0.1.0.jar"
-$ExporterHashFileName = "create_runtime_exporter-0.1.0.sha256"
+$ExporterJarName = "create_runtime_exporter-0.1.1.jar"
+$ExporterHashFileName = "create_runtime_exporter-0.1.1.sha256"
 $ExpectedMinecraftVersion = "1.21.1"
 $ExpectedNeoForgeVersion = "21.1.233"
 $ExpectedPackVersion = "v2.1"
+$TotalStages = 8
+$script:TranscriptStarted = $false
+$script:CurrentPhase = "startup"
+$script:RunLogPath = $null
+$script:RunDirectory = $null
+$script:OutputDirectory = $null
 
-function Write-Step {
-    param([string]$Message)
+function Get-StatusTimestamp {
+    return [DateTime]::Now.ToString("HH:mm:ss")
+}
+
+function Write-Stage {
+    param(
+        [Parameter(Mandatory = $true)][int]$Number,
+        [Parameter(Mandatory = $true)][string]$Title,
+        [string]$Detail
+    )
+
+    $script:CurrentPhase = $Title
     Write-Host ""
-    Write-Host "==> $Message" -ForegroundColor Cyan
+    Write-Host "[$(Get-StatusTimestamp)] Stage $Number/$TotalStages - $Title" -ForegroundColor Cyan
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) {
+        Write-Host "    $Detail"
+    }
+}
+
+function Write-Status {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    Write-Host "[$(Get-StatusTimestamp)] $Message"
+}
+
+function Stop-RunnerTranscript {
+    if ($script:TranscriptStarted) {
+        try {
+            Stop-Transcript | Out-Null
+        } catch {
+            Write-Warning "The runner could not close its transcript cleanly: $($_.Exception.Message)"
+        }
+        $script:TranscriptStarted = $false
+    }
 }
 
 function Get-NormalizedPath {
@@ -126,6 +161,26 @@ function Set-TemporaryServerProperty {
     )
 }
 
+trap {
+    $failureMessage = $_.Exception.Message
+    Write-Host ""
+    Write-Host "[$(Get-StatusTimestamp)] EXPORT FAILED during: $script:CurrentPhase" -ForegroundColor Red
+    Write-Host "Reason: $failureMessage" -ForegroundColor Red
+    if (-not [string]::IsNullOrWhiteSpace($script:RunDirectory) -and
+            (Test-Path -LiteralPath $script:RunDirectory -PathType Container)) {
+        Write-Host "Disposable diagnostic directory: $script:RunDirectory"
+        $failureServerLog = Join-Path $script:RunDirectory "logs\latest.log"
+        if (Test-Path -LiteralPath $failureServerLog -PathType Leaf) {
+            Write-Host "Minecraft/NeoForge log: $failureServerLog"
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($script:RunLogPath)) {
+        Write-Host "Human-readable runner log: $script:RunLogPath"
+    }
+    Stop-RunnerTranscript
+    exit 1
+}
+
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exporterJar = Join-Path $scriptDirectory $ExporterJarName
 $exporterHashPath = Join-Path $scriptDirectory $ExporterHashFileName
@@ -153,6 +208,8 @@ if ([string]::IsNullOrWhiteSpace($localAppData)) {
 $runnerRoot = Join-Path $localAppData "CreateHandbookExporter"
 $cacheRoot = Join-Path $runnerRoot "cache"
 $runsRoot = Join-Path $runnerRoot "runs"
+$logsRoot = Join-Path $runnerRoot "logs"
+$runId = [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $documents = [Environment]::GetFolderPath("MyDocuments")
@@ -165,11 +222,26 @@ $OutputRoot = Get-NormalizedPath -Path $OutputRoot
 
 [System.IO.Directory]::CreateDirectory($cacheRoot) | Out-Null
 [System.IO.Directory]::CreateDirectory($runsRoot) | Out-Null
+[System.IO.Directory]::CreateDirectory($logsRoot) | Out-Null
 [System.IO.Directory]::CreateDirectory($OutputRoot) | Out-Null
+
+$script:RunLogPath = Join-Path $logsRoot "create-export-$runId.log"
+Start-Transcript -LiteralPath $script:RunLogPath | Out-Null
+$script:TranscriptStarted = $true
 
 Write-Host "Create 6.0.10 Handbook Runtime Exporter" -ForegroundColor Green
 Write-Host "This runs a new, disposable local server. It does not inspect or modify CurseForge or Bisect."
+Write-Host "Every major operation is timestamped below. A transcript is saved for debugging."
 
+Write-Stage -Number 1 -Title "Validate runner and version locks" `
+    -Detail "Checking the bundled exporter and declaring the exact supported modpack runtime."
+Write-Status "Exporter jar verified: $ExporterJarName"
+Write-Status "Locked runtime: Minecraft $ExpectedMinecraftVersion; NeoForge $ExpectedNeoForgeVersion; pack $ExpectedPackVersion."
+Write-Status "Scope: $Scope"
+Write-Status "Human-readable run log: $script:RunLogPath"
+
+Write-Stage -Number 2 -Title "Acquire the official server pack" `
+    -Detail "Using only CurseForge project 1518930, file 8478465; cached copies must pass exact verification."
 if ([string]::IsNullOrWhiteSpace($ServerPackPath)) {
     $ServerPackPath = Join-Path $cacheRoot $ServerPackFileName
     $needDownload = $true
@@ -177,7 +249,7 @@ if ([string]::IsNullOrWhiteSpace($ServerPackPath)) {
         try {
             Assert-FileHash -Path $ServerPackPath -ExpectedSha256 $ServerPackSha256 -ExpectedBytes $ServerPackBytes
             $needDownload = $false
-            Write-Step "Using the previously verified official v2.1 server pack."
+            Write-Status "Using the previously downloaded and verified official v2.1 server pack."
         } catch {
             Write-Warning "The cached server pack failed verification and will not be used."
             $invalidPath = "$ServerPackPath.invalid-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
@@ -187,22 +259,33 @@ if ([string]::IsNullOrWhiteSpace($ServerPackPath)) {
     }
 
     if ($needDownload) {
-        Write-Step "Downloading the official All of Create - Aeronautics v2.1 server pack (about 300 MB)."
+        Write-Status "Download 1: official All of Create - Aeronautics v2.1 server pack."
+        Write-Status "Source: CurseForge project 1518930, file 8478465."
+        Write-Status "Expected size: 314,214,774 bytes (about 300 MB)."
+        Write-Status "This file contains the stock server configuration and mod jars."
         $partialPath = "$ServerPackPath.partial"
         if (Test-Path -LiteralPath $partialPath) {
             Remove-Item -LiteralPath $partialPath -Force
         }
+        $downloadStarted = [DateTime]::UtcNow
         Invoke-WebRequest -UseBasicParsing -Uri $ServerPackUrl -OutFile $partialPath
+        $downloadSeconds = [Math]::Round(([DateTime]::UtcNow - $downloadStarted).TotalSeconds, 1)
+        Write-Status "Official server-pack download finished in $downloadSeconds seconds; verification follows."
         Assert-FileHash -Path $partialPath -ExpectedSha256 $ServerPackSha256 -ExpectedBytes $ServerPackBytes
         Move-Item -LiteralPath $partialPath -Destination $ServerPackPath
+        Write-Status "Download 1 passed size and SHA-256 verification and was moved into the local cache."
     }
 } else {
     $ServerPackPath = Get-NormalizedPath -Path $ServerPackPath
+    Write-Status "Using the caller-supplied server-pack path; exact verification is still mandatory."
 }
 
-Write-Step "Verifying the official server-pack hash and file size."
+Write-Status "Performing final server-pack size and SHA-256 verification."
 Assert-FileHash -Path $ServerPackPath -ExpectedSha256 $ServerPackSha256 -ExpectedBytes $ServerPackBytes
+Write-Status "Official server pack verified successfully."
 
+Write-Stage -Number 3 -Title "Confirm legal and export scope" `
+    -Detail "The disposable Minecraft server will not start without explicit EULA acceptance."
 if (-not $AcceptMinecraftEula) {
     Write-Host ""
     Write-Host "Minecraft requires you to accept its EULA before this disposable server can run."
@@ -212,6 +295,7 @@ if (-not $AcceptMinecraftEula) {
         throw "Minecraft EULA acceptance was not confirmed. Nothing was started."
     }
 }
+Write-Status "Minecraft EULA acceptance confirmed for this local disposable-server run."
 
 if ($Scope -eq "full") {
     Write-Host ""
@@ -221,11 +305,13 @@ if ($Scope -eq "full") {
         throw "Full-export confirmation was not provided."
     }
 }
+Write-Status "Export scope confirmed: $Scope"
 
-$runId = [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
 $runDirectory = Join-Path $runsRoot $runId
 $outputDirectory = Join-Path $OutputRoot "create-6.0.10-$Scope-$runId"
 $outputZip = "$outputDirectory.zip"
+$script:RunDirectory = $runDirectory
+$script:OutputDirectory = $outputDirectory
 
 [System.IO.Directory]::CreateDirectory($runDirectory) | Out-Null
 [System.IO.File]::WriteAllText(
@@ -234,8 +320,12 @@ $outputZip = "$outputDirectory.zip"
     [System.Text.UTF8Encoding]::new($false)
 )
 
-Write-Step "Extracting the verified server pack into a disposable local directory."
+Write-Stage -Number 4 -Title "Prepare the disposable local server" `
+    -Detail "Extracting the verified pack, inserting the exporter, and applying loopback-only safety settings."
+Write-Status "Disposable server directory: $runDirectory"
+Write-Status "Clean evidence destination: $outputDirectory"
 Expand-Archive -LiteralPath $ServerPackPath -DestinationPath $runDirectory
+Write-Status "Server-pack extraction completed."
 
 $modsDirectory = Join-Path $runDirectory "mods"
 $startScript = Join-Path $runDirectory "start.ps1"
@@ -255,6 +345,7 @@ if (-not (Test-Path -LiteralPath $serverPropertiesPath -PathType Leaf)) {
 }
 
 Copy-Item -LiteralPath $exporterJar -Destination (Join-Path $modsDirectory $ExporterJarName)
+Write-Status "Added the verified exporter jar to the disposable instance."
 Set-TemporaryVariable -VariablesPath $variablesPath -Name "WAIT_FOR_USER_INPUT" -Value "false"
 Set-TemporaryVariable -VariablesPath $variablesPath -Name "RESTART" -Value "false"
 Set-TemporaryServerProperty -PropertiesPath $serverPropertiesPath -Name "server-ip" -Value "127.0.0.1"
@@ -268,6 +359,8 @@ Set-TemporaryServerProperty -PropertiesPath $serverPropertiesPath -Name "motd" -
     "eula=true`r`n",
     [System.Text.UTF8Encoding]::new($false)
 )
+Write-Status "Applied settings: loopback-only address, ephemeral port, query off, RCON off, no restart."
+Write-Status "Wrote EULA acceptance only inside the disposable server directory."
 
 $previousEnvironment = @{}
 $runtimeEnvironment = @{
@@ -280,8 +373,18 @@ $runtimeEnvironment = @{
     "HANDBOOK_EXPORT_FULL_CONFIRM" = if ($Scope -eq "full") { "EXPORT_ALL_CREATE_RUNTIME_FACTS" } else { "" }
 }
 
-Write-Step "Starting the isolated server. First run may download Java 21 and NeoForge support files."
-Write-Host "The disposable server is restricted to 127.0.0.1 on an ephemeral local port."
+Write-Stage -Number 5 -Title "Bootstrap Minecraft, NeoForge, and the exporter" `
+    -Detail "This is normally the longest stage on the first run."
+Write-Status "The verified stock server script is now taking control."
+Write-Status "It may perform up to three additional setup downloads:"
+Write-Host "    1. Temurin Java 21, but only if no compatible Java is available."
+Write-Host "    2. NeoForge ServerStarterJar and the NeoForge 21.1.233 server installation."
+Write-Host "    3. Minecraft 1.21.1 server libraries required by NeoForge."
+Write-Status "The mod jars are already inside the verified server pack."
+Write-Status "Technical lines below come from the stock server installer and Minecraft/NeoForge."
+Write-Status "Look for [HANDBOOK EXPORT] lines when data collection begins."
+Write-Status "The disposable server is restricted to 127.0.0.1 on an ephemeral local port."
+Write-Status "First-time bootstrap can take several minutes; leave this window open while output changes."
 foreach ($entry in $runtimeEnvironment.GetEnumerator()) {
     $previousEnvironment[$entry.Key] = [Environment]::GetEnvironmentVariable($entry.Key, "Process")
     [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
@@ -298,7 +401,10 @@ try {
         [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, "Process")
     }
 }
+Write-Status "The stock server process exited with code $serverExitCode."
 
+Write-Stage -Number 6 -Title "Validate the runtime evidence" `
+    -Detail "Checking for the exporter manifest, provenance, counts, and sample reconciliation."
 $manifestPath = Join-Path $outputDirectory "manifest.json"
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     Write-Host ""
@@ -311,21 +417,59 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     }
     throw "Runtime export failed. No output ZIP was created."
 }
+Write-Status "Export manifest found."
 
-Write-Step "Packaging the clean JSON evidence files."
+$provenancePath = Join-Path $outputDirectory "provenance.json"
+if (-not (Test-Path -LiteralPath $provenancePath -PathType Leaf)) {
+    throw "Runtime export is incomplete: provenance.json is missing."
+}
+$provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
+Write-Status "Observed $($provenance.counts.mods) loaded mods."
+Write-Status "Captured $($provenance.counts.items) items, $($provenance.counts.blocks) blocks, and $($provenance.counts.recipes) Create-related recipes."
+Write-Status "Captured $($provenance.counts.item_tag_memberships) item-tag and $($provenance.counts.block_tag_memberships) block-tag memberships."
+
+$reconciliationPath = Join-Path $outputDirectory "sample-reconciliation.json"
+if (-not (Test-Path -LiteralPath $reconciliationPath -PathType Leaf)) {
+    throw "Runtime export is incomplete: sample-reconciliation.json is missing."
+}
+$reconciliation = Get-Content -LiteralPath $reconciliationPath -Raw | ConvertFrom-Json
+$missingItemCount = @($reconciliation.missing_item_ids).Count
+$missingBlockCount = @($reconciliation.missing_block_ids).Count
+if ($missingItemCount -gt 0 -or $missingBlockCount -gt 0) {
+    Write-Warning "Sample reconciliation found $missingItemCount missing item IDs and $missingBlockCount missing block IDs. The output is preserved for review."
+} else {
+    Write-Status "All requested sample item and block IDs were reconciled."
+}
+
+Write-Stage -Number 7 -Title "Package the clean evidence" `
+    -Detail "Creating a shareable ZIP containing only the exporter JSON and JSONL records."
 Compress-Archive -Path (Join-Path $outputDirectory "*") -DestinationPath $outputZip
+Write-Status "Evidence ZIP created: $outputZip"
+Write-Status "Evidence ZIP size: $([Math]::Round((Get-Item -LiteralPath $outputZip).Length / 1KB, 1)) KB"
 
+Write-Stage -Number 8 -Title "Finalize and report" `
+    -Detail "Removing only the marker-guarded disposable server while retaining the verified download cache."
 if (-not $KeepWorkDirectory) {
     Assert-DisposablePath -RunDirectory $runDirectory -RunsRoot $runsRoot
     Remove-Item -LiteralPath $runDirectory -Recurse -Force
+    Write-Status "Disposable server directory removed after successful export."
+} else {
+    Write-Status "Disposable server directory retained because -KeepWorkDirectory was supplied."
 }
 
 Write-Host ""
-Write-Host "Export complete." -ForegroundColor Green
+Write-Host "[$(Get-StatusTimestamp)] EXPORT COMPLETE" -ForegroundColor Green
 Write-Host "Upload this ZIP in our chat:"
 Write-Host $outputZip -ForegroundColor Yellow
 Write-Host ""
 Write-Host "The verified server-pack download remains cached for later runs."
+Write-Host "Human-readable run log:"
+Write-Host $script:RunLogPath -ForegroundColor Yellow
 
-Start-Process explorer.exe -ArgumentList "/select,`"$outputZip`""
+Stop-RunnerTranscript
+try {
+    Start-Process explorer.exe -ArgumentList "/select,`"$outputZip`""
+} catch {
+    Write-Warning "The export succeeded, but Explorer could not be opened automatically."
+}
 exit 0

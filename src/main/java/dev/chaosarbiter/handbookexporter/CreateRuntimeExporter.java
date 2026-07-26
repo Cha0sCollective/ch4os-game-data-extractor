@@ -37,22 +37,35 @@ public final class CreateRuntimeExporter {
 
         MinecraftServer server = event.getServer();
         try {
+            LOGGER.info("[HANDBOOK EXPORT] Starting guarded runtime export.");
+            LOGGER.info("[HANDBOOK EXPORT] Verifying dedicated-server state and exact runtime versions.");
             verifyEnvironment(server);
+            LOGGER.info(
+                    "[HANDBOOK EXPORT] Environment verified: Minecraft {}, NeoForge {}, Create {}, pack {}.",
+                    EXPECTED_MINECRAFT,
+                    EXPECTED_NEOFORGE,
+                    EXPECTED_CREATE,
+                    EXPECTED_PACK
+            );
             ExporterSettings settings = ExporterSettings.load(FMLPaths.GAMEDIR.get());
+            LOGGER.info(
+                    "[HANDBOOK EXPORT] Scope is '{}'; output safety checks passed.",
+                    settings.scope()
+            );
             Map<String, Object> provenance = new RuntimeSnapshotWriter(server, settings).write();
             LOGGER.info(
-                    "Create handbook runtime export completed at {} with counts {}",
+                    "[HANDBOOK EXPORT] Completed successfully at {} with counts {}",
                     settings.outputDirectory(),
                     provenance.get("counts")
             );
         } catch (Exception exception) {
             LOGGER.error(
-                    "Create handbook runtime export refused or failed. No existing output files were overwritten.",
+                    "[HANDBOOK EXPORT] Refused or failed. No existing output files were overwritten.",
                     exception
             );
         } finally {
             if (ExporterSettings.autoStop()) {
-                LOGGER.info("Create handbook runtime exporter requested a clean disposable-server shutdown.");
+                LOGGER.info("[HANDBOOK EXPORT] Requesting clean disposable-server shutdown.");
                 server.halt(false);
             }
         }

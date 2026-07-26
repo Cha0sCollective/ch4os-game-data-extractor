@@ -18,12 +18,31 @@ Run it
 6. When Explorer opens, upload the selected create-6.0.10-sample-*.zip file
    in your ChatGPT conversation.
 
+Understanding the output
+------------------------
+The runner shows eight numbered, timestamped stages. Before every download it
+states what is being downloaded, why it is needed, and which verified or stock
+component initiated it. Output from the stock server installer may still be
+technical, but the runner introduces that section and explains the expected
+Java, NeoForge, and Minecraft-library downloads.
+
+When the exporter begins collecting data, look for lines beginning with:
+
+  [HANDBOOK EXPORT]
+
+Those lines report each of the eight data-collection stages and the number of
+records found. A readable transcript of the whole process is retained under:
+
+  %LOCALAPPDATA%\CreateHandbookExporter\logs
+
 Expected locations
 ------------------
 - Cached official server pack:
   %LOCALAPPDATA%\CreateHandbookExporter\cache
 - Disposable server runs:
   %LOCALAPPDATA%\CreateHandbookExporter\runs
+- Human-readable runner logs:
+  %LOCALAPPDATA%\CreateHandbookExporter\logs
 - Clean export ZIPs:
   %USERPROFILE%\Documents\Create-Handbook-Exports
 

@@ -1,5 +1,6 @@
 package dev.chaosarbiter.handbookexporter;
 
+import com.mojang.logging.LogUtils;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -16,6 +17,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.neoforged.fml.ModList;
+import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,6 +32,8 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 final class RuntimeSnapshotWriter {
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     static final Set<String> SAMPLE_IDS = Set.of(
             "create:shaft",
             "create:cogwheel",
@@ -59,13 +63,32 @@ final class RuntimeSnapshotWriter {
         Path output = settings.outputDirectory();
         Files.createDirectories(output);
 
+        progress(1, "Collecting loaded mod identities.");
         List<Map<String, ?>> mods = collectMods();
+        progressCount("loaded mods", mods.size());
+
+        progress(2, "Collecting in-scope Create item registrations and default stack facts.");
         List<Map<String, ?>> items = collectItems();
+        progressCount("items", items.size());
+
+        progress(3, "Collecting corresponding block registrations and state properties.");
         List<Map<String, ?>> blocks = collectBlocks();
+        progressCount("blocks", blocks.size());
+
+        progress(4, "Collecting effective Create-related recipe headers after datapack loading.");
         List<Map<String, ?>> recipes = collectRecipes();
+        progressCount("recipes", recipes.size());
+
+        progress(5, "Resolving loaded item and block tag memberships.");
         List<Map<String, ?>> itemTags = collectTags(BuiltInRegistries.ITEM);
         List<Map<String, ?>> blockTags = collectTags(BuiltInRegistries.BLOCK);
+        LOGGER.info(
+                "[HANDBOOK EXPORT] Collected {} item-tag and {} block-tag memberships.",
+                itemTags.size(),
+                blockTags.size()
+        );
 
+        progress(6, "Writing JSONL evidence files with non-overwriting writes.");
         JsonFiles.writeJsonLines(output.resolve("mods.jsonl"), mods);
         JsonFiles.writeJsonLines(output.resolve("items.jsonl"), items);
         JsonFiles.writeJsonLines(output.resolve("blocks.jsonl"), blocks);
@@ -79,6 +102,7 @@ final class RuntimeSnapshotWriter {
         Map<String, Object> reconciliation = sampleReconciliation(items, blocks);
         JsonFiles.writeJson(output.resolve("sample-reconciliation.json"), reconciliation);
 
+        progress(7, "Hashing the completed evidence files.");
         List<Map<String, Object>> files = new ArrayList<>();
         try (var paths = Files.list(output)) {
             paths.filter(Files::isRegularFile)
@@ -101,8 +125,18 @@ final class RuntimeSnapshotWriter {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("format", "create-handbook-runtime-export-v1");
         manifest.put("files", files);
+        progress(8, "Writing the final manifest.");
         JsonFiles.writeJson(output.resolve("manifest.json"), manifest);
+        LOGGER.info("[HANDBOOK EXPORT] All 8 collection stages completed.");
         return provenance;
+    }
+
+    private void progress(int stage, String message) {
+        LOGGER.info("[HANDBOOK EXPORT] Data stage {}/8 - {}", stage, message);
+    }
+
+    private void progressCount(String label, int count) {
+        LOGGER.info("[HANDBOOK EXPORT] Collected {} {}.", count, label);
     }
 
     private List<Map<String, ?>> collectMods() {
