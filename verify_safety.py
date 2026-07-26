@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parent
 JAVA = ROOT / "src/main/java/dev/chaosarbiter/handbookexporter"
 RESOURCES = ROOT / "src/main/resources"
 RUNNER = ROOT / "runner/Run-CreateHandbookExport.ps1"
+SAMPLE_LAUNCHER = ROOT / "runner/Run-CreateHandbookExport.cmd"
+FULL_LAUNCHER = ROOT / "runner/Run-Full-CreateHandbookExport.cmd"
 
 
 def main() -> int:
@@ -19,6 +21,8 @@ def main() -> int:
     mod_toml = (RESOURCES / "META-INF/neoforge.mods.toml").read_text(encoding="utf-8")
     properties = (ROOT / "gradle.properties").read_text(encoding="utf-8")
     runner_text = RUNNER.read_text(encoding="utf-8")
+    sample_launcher_text = SAMPLE_LAUNCHER.read_text(encoding="utf-8")
+    full_launcher_text = FULL_LAUNCHER.read_text(encoding="utf-8")
 
     required = {
         "explicit enable flag": 'handbook.export.enabled',
@@ -93,6 +97,7 @@ def main() -> int:
         "primitive size comparison": "$actualBytes -ne $ExpectedBytes",
         "size-path regression test": "-ExpectedBytes $validationBytes",
         "partial-download recovery": "Recovered the complete verified download from the previous run",
+        "logs beside export": 'Join-Path $OutputRoot "create-export-$runId.log"',
     }
     for label, needle in runner_required.items():
         if needle not in runner_text:
@@ -111,6 +116,24 @@ def main() -> int:
         for needle in needles:
             if needle in runner_text:
                 failures.append(f"forbidden runner {label}: {needle}")
+
+    launcher_required = {
+        "sample execution-policy bypass": (
+            sample_launcher_text,
+            "-ExecutionPolicy Bypass",
+        ),
+        "full execution-policy bypass": (
+            full_launcher_text,
+            "-ExecutionPolicy Bypass",
+        ),
+        "explicit full scope": (
+            full_launcher_text,
+            "-Scope full",
+        ),
+    }
+    for label, (launcher_text, needle) in launcher_required.items():
+        if needle not in launcher_text:
+            failures.append(f"missing launcher {label}: {needle}")
 
     if failures:
         print("\n".join(f"ERROR: {failure}" for failure in failures), file=sys.stderr)
