@@ -18,10 +18,10 @@ Run it
 6. When Explorer opens, upload the selected create-6.0.10-sample-*.zip file
    in your ChatGPT conversation.
 
-Run this as your normal Windows user. Do not choose "Run as administrator."
-The runner neither needs nor accepts elevated privileges. If Java 21 must be
-installed system-wide in a restricted development environment, install it as
-a separate prerequisite and then run the exporter normally.
+Run this as your normal Windows user; administrator privileges are not needed.
+If Java 21 must be installed system-wide in a restricted development
+environment, install it as a separate prerequisite and then run the exporter
+normally.
 
 Understanding the output
 ------------------------
@@ -56,7 +56,6 @@ Safety notes
 - The official server pack is locked to CurseForge project 1518930, file
   8478465, exact size 314,214,774 bytes, and an exact SHA-256 hash.
 - The exporter jar is verified against the checksum included in this bundle.
-- The runner refuses administrator/elevated execution.
 - The disposable server binds only to 127.0.0.1 on an ephemeral port. Query
   and RCON are disabled.
 - Output uses a new timestamped directory and never overwrites an old export.

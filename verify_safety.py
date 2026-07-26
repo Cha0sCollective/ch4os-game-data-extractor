@@ -83,7 +83,6 @@ def main() -> int:
         "failure summary": "EXPORT FAILED during",
         "primitive size comparison": "$actualBytes -ne $ExpectedBytes",
         "size-path regression test": "-ExpectedBytes $validationBytes",
-        "administrator refusal": "Do not run this exporter as Administrator",
         "partial-download recovery": "Recovered the complete verified download from the previous run",
     }
     for label, needle in runner_required.items():

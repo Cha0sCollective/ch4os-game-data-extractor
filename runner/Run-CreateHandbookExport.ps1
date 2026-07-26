@@ -98,12 +98,6 @@ function Assert-FileHash {
     }
 }
 
-function Test-IsAdministrator {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
 function Assert-DisposablePath {
     param(
         [Parameter(Mandatory = $true)][string]$RunDirectory,
@@ -213,10 +207,6 @@ if ($ValidateOnly) {
     exit 0
 }
 
-if (Test-IsAdministrator) {
-    throw "Do not run this exporter as Administrator. It is designed for standard-user execution and refuses elevated privileges."
-}
-
 $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
 if ([string]::IsNullOrWhiteSpace($localAppData)) {
     throw "Windows did not provide a LocalApplicationData directory."
@@ -252,7 +242,6 @@ Write-Host "Every major operation is timestamped below. A transcript is saved fo
 Write-Stage -Number 1 -Title "Validate runner and version locks" `
     -Detail "Checking the bundled exporter and declaring the exact supported modpack runtime."
 Write-Status "Exporter jar verified: $ExporterJarName"
-Write-Status "Privilege level: standard user (required)."
 Write-Status "Locked runtime: Minecraft $ExpectedMinecraftVersion; NeoForge $ExpectedNeoForgeVersion; pack $ExpectedPackVersion."
 Write-Status "Scope: $Scope"
 Write-Status "Human-readable run log: $script:RunLogPath"

@@ -71,7 +71,7 @@ The runner:
 
 - downloads the official v2.1 CurseForge server pack and verifies its exact
   size and SHA-256 hash before extraction;
-- runs as a standard user and refuses administrator/elevated execution;
+- requires no administrator/elevated privileges;
 - recovers a complete verified server-pack `.partial` file left by an older
   failed run instead of downloading the roughly 300 MB archive again;
 - works only under `%LOCALAPPDATA%\CreateHandbookExporter`;
