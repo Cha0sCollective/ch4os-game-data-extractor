@@ -30,13 +30,13 @@ public final class CreateRuntimeExporter {
     }
 
     private void onServerStarted(ServerStartedEvent event) {
-        if (!Boolean.getBoolean("handbook.export.enabled")) {
+        if (!ExporterSettings.enabled()) {
             LOGGER.info("Create handbook runtime exporter is installed but disabled.");
             return;
         }
 
+        MinecraftServer server = event.getServer();
         try {
-            MinecraftServer server = event.getServer();
             verifyEnvironment(server);
             ExporterSettings settings = ExporterSettings.load(FMLPaths.GAMEDIR.get());
             Map<String, Object> provenance = new RuntimeSnapshotWriter(server, settings).write();
@@ -50,6 +50,11 @@ public final class CreateRuntimeExporter {
                     "Create handbook runtime export refused or failed. No existing output files were overwritten.",
                     exception
             );
+        } finally {
+            if (ExporterSettings.autoStop()) {
+                LOGGER.info("Create handbook runtime exporter requested a clean disposable-server shutdown.");
+                server.halt(false);
+            }
         }
     }
 
@@ -66,7 +71,7 @@ public final class CreateRuntimeExporter {
         requireVersion("Create", modVersion("create"), EXPECTED_CREATE);
         requireVersion(
                 "pack declaration",
-                System.getProperty("handbook.export.packVersion", ""),
+                ExporterSettings.declaredPackVersion(),
                 EXPECTED_PACK
         );
     }

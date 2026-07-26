@@ -24,9 +24,8 @@ Basin, Mechanical Pump, Fluid Tank, Steam Engine, Clipboard, and Potato
 Cannon.
 
 Creative tabs, localized client tooltips, baked models, textures, renderers,
-Create-specific stress values, inventories, fluid capacities, and automated
-shutdown are deliberately deferred until this server-side evidence is
-validated.
+Create-specific stress values, inventories, and fluid capacities are
+deliberately deferred until this server-side evidence is validated.
 
 ## Safety contract
 
@@ -41,6 +40,8 @@ The exporter:
 - requires an absolute output path outside the game directory;
 - refuses to write into a non-empty output directory;
 - creates files with `CREATE_NEW` and never overwrites them;
+- can stop its disposable server after either success or refusal when the
+  runner explicitly enables automatic shutdown;
 - performs no network requests;
 - registers no items, blocks, recipes, commands, mixins, access transformers,
   or coremods;
@@ -60,10 +61,27 @@ gradle --no-daemon build
 The build produces only the original exporter jar. It does not download,
 package, or publish the All of Create modpack.
 
-## Eventual disposable run
+## Windows disposable runner
 
-The final runner will create a temporary server installation and supply these
-JVM properties:
+The GitHub Actions artifact contains the exporter jar, its SHA-256 checksum,
+and the files in `runner/`. After extracting the artifact, double-click
+`Run-CreateHandbookExport.cmd`.
+
+The runner:
+
+- downloads the official v2.1 CurseForge server pack and verifies its exact
+  size and SHA-256 hash before extraction;
+- works only under `%LOCALAPPDATA%\CreateHandbookExporter`;
+- asks the user to review and explicitly accept the Minecraft EULA;
+- supplies the export settings through process-scoped environment variables;
+- creates a clean output ZIP under
+  `%USERPROFILE%\Documents\Create-Handbook-Exports`;
+- never reads or changes the CurseForge client instance or Bisect server;
+- removes only a successful disposable run bearing its safety marker;
+- retains failed runs locally for diagnosis.
+
+The same settings may be supplied as JVM properties for manual developer
+runs:
 
 ```text
 -Dhandbook.export.enabled=true
@@ -71,6 +89,7 @@ JVM properties:
 -Dhandbook.export.packVersion=v2.1
 -Dhandbook.export.scope=sample
 -Dhandbook.export.output=<absolute path outside the game directory>
+-Dhandbook.export.autoStop=true
 ```
 
 Full-namespace export additionally requires:
@@ -80,5 +99,5 @@ Full-namespace export additionally requires:
 -Dhandbook.export.fullConfirm=EXPORT_ALL_CREATE_RUNTIME_FACTS
 ```
 
-The one-click disposable runner is intentionally not included until the
-sample exporter compiles and its output has been reviewed.
+The default remains the ten-item sample. Full scope has an additional
+interactive confirmation and exporter confirmation token.

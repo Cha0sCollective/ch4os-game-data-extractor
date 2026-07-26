@@ -11,21 +11,31 @@ final class ExporterSettings {
 
     private final Path outputDirectory;
     private final String scope;
+    private final String declaredPackVersion;
 
-    private ExporterSettings(Path outputDirectory, String scope) {
+    private ExporterSettings(Path outputDirectory, String scope, String declaredPackVersion) {
         this.outputDirectory = outputDirectory;
         this.scope = scope;
+        this.declaredPackVersion = declaredPackVersion;
     }
 
     static ExporterSettings load(Path gameDirectory) throws IOException {
-        if (!Boolean.getBoolean("handbook.export.enabled")) {
+        if (!enabled()) {
             throw new IllegalStateException("handbook.export.enabled is not true");
         }
-        if (!CONFIRMATION.equals(System.getProperty("handbook.export.confirm"))) {
+        if (!CONFIRMATION.equals(value(
+                "handbook.export.confirm",
+                "HANDBOOK_EXPORT_CONFIRM",
+                ""
+        ))) {
             throw new IllegalStateException("disposable-instance confirmation is missing");
         }
 
-        String outputValue = System.getProperty("handbook.export.output", "").trim();
+        String outputValue = value(
+                "handbook.export.output",
+                "HANDBOOK_EXPORT_OUTPUT",
+                ""
+        ).trim();
         if (outputValue.isEmpty()) {
             throw new IllegalStateException("handbook.export.output must be an absolute path");
         }
@@ -45,17 +55,58 @@ final class ExporterSettings {
             }
         }
 
-        String scope = System.getProperty("handbook.export.scope", "sample")
+        String scope = value(
+                "handbook.export.scope",
+                "HANDBOOK_EXPORT_SCOPE",
+                "sample"
+        )
                 .trim().toLowerCase(Locale.ROOT);
         if (!scope.equals("sample") && !scope.equals("full")) {
             throw new IllegalStateException("handbook.export.scope must be sample or full");
         }
         if (scope.equals("full")
-                && !FULL_CONFIRMATION.equals(System.getProperty("handbook.export.fullConfirm"))) {
+                && !FULL_CONFIRMATION.equals(value(
+                        "handbook.export.fullConfirm",
+                        "HANDBOOK_EXPORT_FULL_CONFIRM",
+                        ""
+                ))) {
             throw new IllegalStateException("full-export confirmation is missing");
         }
 
-        return new ExporterSettings(output, scope);
+        return new ExporterSettings(output, scope, declaredPackVersion());
+    }
+
+    static boolean enabled() {
+        return Boolean.parseBoolean(value(
+                "handbook.export.enabled",
+                "HANDBOOK_EXPORT_ENABLED",
+                "false"
+        ));
+    }
+
+    static boolean autoStop() {
+        return Boolean.parseBoolean(value(
+                "handbook.export.autoStop",
+                "HANDBOOK_EXPORT_AUTOSTOP",
+                "false"
+        ));
+    }
+
+    static String declaredPackVersion() {
+        return value(
+                "handbook.export.packVersion",
+                "HANDBOOK_EXPORT_PACK_VERSION",
+                ""
+        );
+    }
+
+    private static String value(String propertyName, String environmentName, String defaultValue) {
+        String propertyValue = System.getProperty(propertyName);
+        if (propertyValue != null) {
+            return propertyValue;
+        }
+        String environmentValue = System.getenv(environmentName);
+        return environmentValue == null ? defaultValue : environmentValue;
     }
 
     Path outputDirectory() {
@@ -64,5 +115,9 @@ final class ExporterSettings {
 
     String scope() {
         return scope;
+    }
+
+    String declaredPackVersionValue() {
+        return declaredPackVersion;
     }
 }

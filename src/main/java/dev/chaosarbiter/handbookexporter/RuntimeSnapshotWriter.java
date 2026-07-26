@@ -280,7 +280,7 @@ final class RuntimeSnapshotWriter {
         row.put("minecraft_version", SharedConstants.getCurrentVersion().getName());
         row.put("neoforge_version", modVersion("neoforge"));
         row.put("create_version", modVersion("create"));
-        row.put("declared_pack_version", System.getProperty("handbook.export.packVersion"));
+        row.put("declared_pack_version", settings.declaredPackVersionValue());
         row.put("scope", settings.scope());
         row.put("sample_ids", SAMPLE_IDS.stream().sorted().toList());
         row.put("dedicated_server", true);

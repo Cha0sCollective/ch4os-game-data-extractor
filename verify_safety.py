@@ -8,6 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parent
 JAVA = ROOT / "src/main/java/dev/chaosarbiter/handbookexporter"
 RESOURCES = ROOT / "src/main/resources"
+RUNNER = ROOT / "runner/Run-CreateHandbookExport.ps1"
 
 
 def main() -> int:
@@ -17,9 +18,11 @@ def main() -> int:
     )
     mod_toml = (RESOURCES / "META-INF/neoforge.mods.toml").read_text(encoding="utf-8")
     properties = (ROOT / "gradle.properties").read_text(encoding="utf-8")
+    runner_text = RUNNER.read_text(encoding="utf-8")
 
     required = {
         "explicit enable flag": 'handbook.export.enabled',
+        "environment enable flag": "HANDBOOK_EXPORT_ENABLED",
         "disposable confirmation": "DISPOSABLE_INSTANCE",
         "dedicated-server guard": "Dist.DEDICATED_SERVER",
         "zero-player guard": "getPlayerCount() != 0",
@@ -28,6 +31,7 @@ def main() -> int:
         "create version lock": 'EXPECTED_CREATE = "6.0.10"',
         "pack version lock": 'EXPECTED_PACK = "v2.1"',
         "non-overwriting writes": "StandardOpenOption.CREATE_NEW",
+        "automatic disposable shutdown": "server.halt(false)",
     }
     for label, needle in required.items():
         if needle not in java_text:
@@ -55,6 +59,35 @@ def main() -> int:
     ):
         if lock not in properties:
             failures.append(f"missing build lock: {lock}")
+
+    runner_required = {
+        "official server-pack project/file": "mods/1518930/files/8478465/download",
+        "official server-pack hash": "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b",
+        "official server-pack byte size": "314214774",
+        "exporter jar hash verification": "create_runtime_exporter-0.1.0.sha256",
+        "separate local working root": "CreateHandbookExporter",
+        "disposable marker": ".handbook-disposable-instance",
+        "Minecraft EULA confirmation": "I ACCEPT",
+        "sample default": '[string]$Scope = "sample"',
+        "clean export archive": "Compress-Archive",
+    }
+    for label, needle in runner_required.items():
+        if needle not in runner_text:
+            failures.append(f"missing runner {label}: {needle}")
+
+    runner_forbidden = {
+        "CurseForge client mutation": (
+            "CurseForge\\Minecraft\\Instances",
+            "curseforge\\minecraft\\instances",
+        ),
+        "Bisect access": ("bisecthosting", "ssh ", "sftp"),
+        "credential collection": ("Get-Credential", "ConvertTo-SecureString"),
+        "unverified execution download": ("Invoke-Expression", "iex "),
+    }
+    for label, needles in runner_forbidden.items():
+        for needle in needles:
+            if needle in runner_text:
+                failures.append(f"forbidden runner {label}: {needle}")
 
     if failures:
         print("\n".join(f"ERROR: {failure}" for failure in failures), file=sys.stderr)
