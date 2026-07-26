@@ -50,7 +50,7 @@ The exporter:
 
 ## Development build
 
-Use Java 21 and Gradle 8.10.2:
+Use Java 21 and Gradle 8.14:
 
 ```shell
 python verify_safety.py
