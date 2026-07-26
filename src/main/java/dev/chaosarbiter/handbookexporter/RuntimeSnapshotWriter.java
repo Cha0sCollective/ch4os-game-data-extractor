@@ -88,11 +88,11 @@ final class RuntimeSnapshotWriter {
                 blockTags.size()
         );
 
-        progress(6, "Reading effective Create stress registries and loaded server settings.");
+        progress(6, "Reading effective Create stress registries and loaded server/common settings.");
         CreateRuntimeIntrospection.IntrospectionResult introspection =
                 new CreateRuntimeIntrospection(inScope).collect();
         progressCount("effective mechanics facts", introspection.mechanics().size());
-        progressCount("effective server configuration values", introspection.configs().size());
+        progressCount("effective server/common configuration values", introspection.configs().size());
 
         progress(7, "Writing JSONL evidence files with non-overwriting writes.");
         JsonFiles.writeJsonLines(output.resolve("mods.jsonl"), mods);

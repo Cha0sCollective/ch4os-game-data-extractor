@@ -22,8 +22,8 @@ $ServerPackFileName = "All_of_Create_-_Aeronautics_v2.1_serverpack.zip"
 $ServerPackSha256 = "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b"
 $ServerPackBytes = 314214774
 $MinecraftEulaUrl = "https://www.minecraft.net/eula"
-$ExporterJarName = "create_runtime_exporter-0.2.1.jar"
-$ExporterHashFileName = "create_runtime_exporter-0.2.1.sha256"
+$ExporterJarName = "create_runtime_exporter-0.2.2.jar"
+$ExporterHashFileName = "create_runtime_exporter-0.2.2.sha256"
 $ExpectedMinecraftVersion = "1.21.1"
 $ExpectedNeoForgeVersion = "21.1.233"
 $ExpectedPackVersion = "v2.1"
@@ -457,7 +457,7 @@ $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
 Write-Status "Observed $($provenance.counts.mods) loaded mods."
 Write-Status "Captured $($provenance.counts.items) items, $($provenance.counts.blocks) blocks, and $($provenance.counts.recipes) Create-related recipes."
 Write-Status "Captured $($provenance.counts.item_tag_memberships) item-tag and $($provenance.counts.block_tag_memberships) block-tag memberships."
-Write-Status "Captured $($provenance.counts.mechanics) effective mechanics facts and $($provenance.counts.effective_config_values) effective server settings."
+Write-Status "Captured $($provenance.counts.mechanics) effective mechanics facts and $($provenance.counts.effective_config_values) effective server/common settings."
 
 $diagnosticsPath = Join-Path $outputDirectory "introspection-diagnostics.jsonl"
 if (-not (Test-Path -LiteralPath $diagnosticsPath -PathType Leaf)) {
@@ -480,7 +480,7 @@ if ($diagnosticFindings.Count -gt 0) {
         Write-Warning "$($finding.subsystem): status=$($finding.status); rows=$($finding.row_count)$fieldErrorCount; $($finding.error_class): $($finding.error_message)"
     }
 } else {
-    Write-Status "Create stress-registry and server-config introspection both completed successfully."
+    Write-Status "Create stress-registry, server-config, and common-config introspection completed successfully."
 }
 
 $reconciliationPath = Join-Path $outputDirectory "sample-reconciliation.json"

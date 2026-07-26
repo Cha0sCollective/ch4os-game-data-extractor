@@ -32,6 +32,9 @@ final class CreateRuntimeIntrospection {
             "com.simibubi.create.api.stress.BlockStressValues";
     private static final String CONFIG_CLASS =
             "com.simibubi.create.infrastructure.config.AllConfigs";
+    private static final String CONFIG_BASE_CLASS =
+            "net.createmod.catnip.config.ConfigBase";
+    private static final String CONFIG_GROUP_SIMPLE_NAME = "ConfigGroup";
     private static final String SIMPLE_REGISTRY_CLASS =
             "com.simibubi.create.api.registry.SimpleRegistry";
 
@@ -138,29 +141,41 @@ final class CreateRuntimeIntrospection {
     ) {
         try {
             Class<?> configsClass = Class.forName(CONFIG_CLASS);
-            Object serverConfig = configsClass.getMethod("server").invoke(null);
-            Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<>());
-            List<Map<String, Object>> fieldErrors = new ArrayList<>();
-            collectConfigObject(serverConfig, "server", rows, visited, fieldErrors);
-            Map<String, Object> summary = status(
-                    "server_config",
-                    fieldErrors.isEmpty() ? "ok" : "partial",
-                    rows.size(),
-                    fieldErrors.isEmpty() ? null : new IllegalStateException(
-                            fieldErrors.size() + " config field(s) could not be read"
-                    )
-            );
-            summary.put("field_error_count", fieldErrors.size());
-            summary.put("field_errors", fieldErrors);
-            diagnostics.add(summary);
+            collectConfigRoot(configsClass, "server", rows, diagnostics);
+            collectConfigRoot(configsClass, "common", rows, diagnostics);
         } catch (ReflectiveOperationException | RuntimeException exception) {
-            diagnostics.add(status("server_config", "error", rows.size(), exception));
+            diagnostics.add(status("config_roots", "error", rows.size(), exception));
         }
+    }
+
+    private void collectConfigRoot(
+            Class<?> configsClass,
+            String scope,
+            List<Map<String, ?>> rows,
+            List<Map<String, ?>> diagnostics
+    ) throws ReflectiveOperationException {
+        Object config = configsClass.getMethod(scope).invoke(null);
+        int rowStart = rows.size();
+        Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        List<Map<String, Object>> fieldErrors = new ArrayList<>();
+        collectConfigObject(config, scope, scope, rows, visited, fieldErrors);
+        Map<String, Object> summary = status(
+                scope + "_config",
+                fieldErrors.isEmpty() ? "ok" : "partial",
+                rows.size() - rowStart,
+                fieldErrors.isEmpty() ? null : new IllegalStateException(
+                        fieldErrors.size() + " config field(s) could not be read"
+                )
+        );
+        summary.put("field_error_count", fieldErrors.size());
+        summary.put("field_errors", fieldErrors);
+        diagnostics.add(summary);
     }
 
     private void collectConfigObject(
             Object config,
             String path,
+            String scope,
             List<Map<String, ?>> rows,
             Set<Object> visited,
             List<Map<String, Object>> fieldErrors
@@ -179,6 +194,20 @@ final class CreateRuntimeIntrospection {
             if (fieldValue == null) {
                 continue;
             }
+            if (field.getType().getSimpleName().equals(CONFIG_GROUP_SIMPLE_NAME)) {
+                continue;
+            }
+            if (isConfigSection(fieldValue)) {
+                collectConfigObject(
+                        fieldValue,
+                        path + "." + field.getName(),
+                        scope,
+                        rows,
+                        visited,
+                        fieldErrors
+                );
+                continue;
+            }
             Method getter = zeroArgumentMethod(fieldValue, "get");
             if (getter != null) {
                 Object effective;
@@ -190,7 +219,7 @@ final class CreateRuntimeIntrospection {
                 }
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("mod_id", "create");
-                row.put("config_scope", "server");
+                row.put("config_scope", scope);
                 row.put("config_path", path);
                 row.put("config_class", config.getClass().getSimpleName());
                 row.put("field_name", field.getName());
@@ -204,17 +233,14 @@ final class CreateRuntimeIntrospection {
                 rows.add(row);
                 continue;
             }
-            if (fieldValue.getClass().getName().startsWith(
-                    "com.simibubi.create.infrastructure.config.C"
-            )) {
-                collectConfigObject(
-                        fieldValue,
-                        path + "." + field.getName(),
-                        rows,
-                        visited,
-                        fieldErrors
-                );
-            }
+        }
+    }
+
+    private boolean isConfigSection(Object target) {
+        try {
+            return Class.forName(CONFIG_BASE_CLASS).isInstance(target);
+        } catch (ClassNotFoundException exception) {
+            throw new IllegalStateException("Create config base class is unavailable", exception);
         }
     }
 

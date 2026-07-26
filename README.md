@@ -19,7 +19,7 @@ The first pass exports:
 - resolved item and block tag memberships;
 - effective stress impact, stress capacity, and generated-RPM facts from
   Create's loaded runtime registries;
-- effective values exposed by Create's loaded server configuration sections;
+- effective values exposed by Create's loaded server and common configuration sections;
 - provenance, output hashes, and sample reconciliation.
 
 The sample entries are Shaft, Cogwheel, Mechanical Press, Mechanical Mixer,
@@ -119,7 +119,7 @@ interactive confirmation and exporter confirmation token.
 
 ## Runtime diagnostics and sample reconciliation
 
-Version 0.2.1 preserves the PowerShell runner transcript and, when the stock
+Version 0.2.2 preserves the PowerShell runner transcript and, when the stock
 server produces it, the Minecraft/NeoForge `latest.log`. Neither log is placed
 in the clean evidence ZIP because diagnostic output can contain local Windows
 paths or the local account name.
@@ -129,7 +129,7 @@ that actually declare a corresponding block ID. This prevents an item-only
 entry such as the Potato Cannon from being reported as a missing block while
 still detecting a genuinely absent block record.
 
-The 0.2.1 evidence ZIP also contains `mechanics.jsonl`,
+The 0.2.2 evidence ZIP also contains `mechanics.jsonl`,
 `config-values.jsonl`, and `introspection-diagnostics.jsonl`. The mechanics
 records come from Create's effective runtime stress registries; the
 configuration records come from the loaded server config objects. Diagnostic
@@ -139,3 +139,13 @@ a precise diagnostic while the exporter continues through the remaining
 sections. Registry reflection is performed through Create's public
 `SimpleRegistry` API. Interactive confirmation phrases ignore capitalization,
 leading/trailing spaces, and repeated internal whitespace.
+
+Config traversal identifies Catnip `ConfigBase` sections before looking for a
+value getter. This is significant because nested sections also expose a
+guarded `get()` method; invoking it treats a section as a scalar and raises an
+assertion instead of visiting its options.
+
+Catnip `ConfigGroup` objects are organizational markers rather than values or
+nested objects. They are skipped without a diagnostic; the scalar fields they
+group are still exported. Version 0.2.2 also reads Create's common config root,
+which contains its world-generation switch, separately from the server root.
