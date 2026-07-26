@@ -12,7 +12,8 @@ Run it
 1. Extract the entire downloaded artifact ZIP into a normal folder.
 2. Double-click Run-CreateHandbookExport.cmd.
 3. Review the Minecraft EULA link shown by the runner.
-4. Type I ACCEPT only if you accept the EULA.
+4. Type I ACCEPT only if you accept the EULA. Capitalization and accidental
+   surrounding or repeated spaces are ignored.
 5. Wait. The first run downloads and verifies the official v2.1 server pack
    (about 300 MB), and the stock server scripts may install Java 21.
 6. When Explorer opens, upload the selected create-6.0.10-sample-*.zip file

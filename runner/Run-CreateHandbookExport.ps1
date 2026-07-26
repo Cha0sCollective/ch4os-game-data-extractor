@@ -22,8 +22,8 @@ $ServerPackFileName = "All_of_Create_-_Aeronautics_v2.1_serverpack.zip"
 $ServerPackSha256 = "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b"
 $ServerPackBytes = 314214774
 $MinecraftEulaUrl = "https://www.minecraft.net/eula"
-$ExporterJarName = "create_runtime_exporter-0.2.0.jar"
-$ExporterHashFileName = "create_runtime_exporter-0.2.0.sha256"
+$ExporterJarName = "create_runtime_exporter-0.2.1.jar"
+$ExporterHashFileName = "create_runtime_exporter-0.2.1.sha256"
 $ExpectedMinecraftVersion = "1.21.1"
 $ExpectedNeoForgeVersion = "21.1.233"
 $ExpectedPackVersion = "v2.1"
@@ -309,8 +309,8 @@ if (-not $AcceptMinecraftEula) {
     Write-Host ""
     Write-Host "Minecraft requires you to accept its EULA before this disposable server can run."
     Write-Host $MinecraftEulaUrl -ForegroundColor Yellow
-    $eulaResponse = Read-Host "After reviewing it, type I ACCEPT to continue"
-    if ($eulaResponse -cne "I ACCEPT") {
+    $eulaResponse = ((Read-Host "After reviewing it, type I ACCEPT to continue").Trim() -replace "\s+", " ")
+    if ($eulaResponse -ine "I ACCEPT") {
         throw "Minecraft EULA acceptance was not confirmed. Nothing was started."
     }
 }
@@ -319,8 +319,8 @@ Write-Status "Minecraft EULA acceptance confirmed for this local disposable-serv
 if ($Scope -eq "full") {
     Write-Host ""
     Write-Host "Full scope exports every loaded create:* item and block fact supported by this exporter."
-    $fullResponse = Read-Host "Type EXPORT ALL CREATE FACTS to continue"
-    if ($fullResponse -cne "EXPORT ALL CREATE FACTS") {
+    $fullResponse = ((Read-Host "Type EXPORT ALL CREATE FACTS to continue").Trim() -replace "\s+", " ")
+    if ($fullResponse -ine "EXPORT ALL CREATE FACTS") {
         throw "Full-export confirmation was not provided."
     }
 }
@@ -463,14 +463,22 @@ $diagnosticsPath = Join-Path $outputDirectory "introspection-diagnostics.jsonl"
 if (-not (Test-Path -LiteralPath $diagnosticsPath -PathType Leaf)) {
     throw "Runtime export is incomplete: introspection-diagnostics.jsonl is missing."
 }
-$diagnosticErrors = @(
+$diagnosticFindings = @(
     Get-Content -LiteralPath $diagnosticsPath |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
         ForEach-Object { $_ | ConvertFrom-Json } |
         Where-Object { $_.status -ne "ok" }
 )
-if ($diagnosticErrors.Count -gt 0) {
-    Write-Warning "Create runtime introspection reported $($diagnosticErrors.Count) subsystem error(s). The evidence and diagnostic logs are preserved for review."
+if ($diagnosticFindings.Count -gt 0) {
+    Write-Warning "Create runtime introspection reported $($diagnosticFindings.Count) non-ok subsystem result(s). The evidence and diagnostic logs are preserved for review."
+    foreach ($finding in $diagnosticFindings) {
+        $fieldErrorCount = if ($null -ne $finding.field_error_count) {
+            "; unreadable fields: $($finding.field_error_count)"
+        } else {
+            ""
+        }
+        Write-Warning "$($finding.subsystem): status=$($finding.status); rows=$($finding.row_count)$fieldErrorCount; $($finding.error_class): $($finding.error_message)"
+    }
 } else {
     Write-Status "Create stress-registry and server-config introspection both completed successfully."
 }

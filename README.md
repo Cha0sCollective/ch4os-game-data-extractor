@@ -119,7 +119,7 @@ interactive confirmation and exporter confirmation token.
 
 ## Runtime diagnostics and sample reconciliation
 
-Version 0.2.0 preserves the PowerShell runner transcript and, when the stock
+Version 0.2.1 preserves the PowerShell runner transcript and, when the stock
 server produces it, the Minecraft/NeoForge `latest.log`. Neither log is placed
 in the clean evidence ZIP because diagnostic output can contain local Windows
 paths or the local account name.
@@ -129,8 +129,13 @@ that actually declare a corresponding block ID. This prevents an item-only
 entry such as the Potato Cannon from being reported as a missing block while
 still detecting a genuinely absent block record.
 
-The 0.2.0 evidence ZIP also contains `mechanics.jsonl`,
+The 0.2.1 evidence ZIP also contains `mechanics.jsonl`,
 `config-values.jsonl`, and `introspection-diagnostics.jsonl`. The mechanics
 records come from Create's effective runtime stress registries; the
 configuration records come from the loaded server config objects. Diagnostic
 rows make a reflection mismatch visible without discarding the rest of a run.
+Config getters are isolated field by field, so one incompatible option produces
+a precise diagnostic while the exporter continues through the remaining
+sections. Registry reflection is performed through Create's public
+`SimpleRegistry` API. Interactive confirmation phrases ignore capitalization,
+leading/trailing spaces, and repeated internal whitespace.

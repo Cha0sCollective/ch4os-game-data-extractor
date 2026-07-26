@@ -32,6 +32,8 @@ final class CreateRuntimeIntrospection {
             "com.simibubi.create.api.stress.BlockStressValues";
     private static final String CONFIG_CLASS =
             "com.simibubi.create.infrastructure.config.AllConfigs";
+    private static final String SIMPLE_REGISTRY_CLASS =
+            "com.simibubi.create.api.registry.SimpleRegistry";
 
     private final Predicate<ResourceLocation> inScope;
 
@@ -138,8 +140,19 @@ final class CreateRuntimeIntrospection {
             Class<?> configsClass = Class.forName(CONFIG_CLASS);
             Object serverConfig = configsClass.getMethod("server").invoke(null);
             Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<>());
-            collectConfigObject(serverConfig, "server", rows, visited);
-            diagnostics.add(status("server_config", "ok", rows.size(), null));
+            List<Map<String, Object>> fieldErrors = new ArrayList<>();
+            collectConfigObject(serverConfig, "server", rows, visited, fieldErrors);
+            Map<String, Object> summary = status(
+                    "server_config",
+                    fieldErrors.isEmpty() ? "ok" : "partial",
+                    rows.size(),
+                    fieldErrors.isEmpty() ? null : new IllegalStateException(
+                            fieldErrors.size() + " config field(s) could not be read"
+                    )
+            );
+            summary.put("field_error_count", fieldErrors.size());
+            summary.put("field_errors", fieldErrors);
+            diagnostics.add(summary);
         } catch (ReflectiveOperationException | RuntimeException exception) {
             diagnostics.add(status("server_config", "error", rows.size(), exception));
         }
@@ -149,19 +162,32 @@ final class CreateRuntimeIntrospection {
             Object config,
             String path,
             List<Map<String, ?>> rows,
-            Set<Object> visited
-    ) throws IllegalAccessException, InvocationTargetException {
+            Set<Object> visited,
+            List<Map<String, Object>> fieldErrors
+    ) {
         if (config == null || !visited.add(config)) {
             return;
         }
         for (Field field : sortedPublicFields(config.getClass())) {
-            Object fieldValue = field.get(config);
+            Object fieldValue;
+            try {
+                fieldValue = field.get(config);
+            } catch (IllegalAccessException exception) {
+                fieldErrors.add(configFieldError(path, config, field, exception));
+                continue;
+            }
             if (fieldValue == null) {
                 continue;
             }
             Method getter = zeroArgumentMethod(fieldValue, "get");
             if (getter != null) {
-                Object effective = getter.invoke(fieldValue);
+                Object effective;
+                try {
+                    effective = getter.invoke(fieldValue);
+                } catch (IllegalAccessException | InvocationTargetException | RuntimeException exception) {
+                    fieldErrors.add(configFieldError(path, config, field, exception));
+                    continue;
+                }
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("mod_id", "create");
                 row.put("config_scope", "server");
@@ -181,9 +207,31 @@ final class CreateRuntimeIntrospection {
             if (fieldValue.getClass().getName().startsWith(
                     "com.simibubi.create.infrastructure.config.C"
             )) {
-                collectConfigObject(fieldValue, path + "." + field.getName(), rows, visited);
+                collectConfigObject(
+                        fieldValue,
+                        path + "." + field.getName(),
+                        rows,
+                        visited,
+                        fieldErrors
+                );
             }
         }
+    }
+
+    private Map<String, Object> configFieldError(
+            String path,
+            Object config,
+            Field field,
+            Throwable exception
+    ) {
+        Throwable cause = rootCause(exception);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("config_path", path);
+        row.put("config_class", config.getClass().getSimpleName());
+        row.put("field_name", field.getName());
+        row.put("error_class", cause.getClass().getName());
+        row.put("error_message", safeMessage(cause));
+        return row;
     }
 
     private List<Field> sortedPublicFields(Class<?> type) {
@@ -211,20 +259,20 @@ final class CreateRuntimeIntrospection {
         if (registry instanceof Map<?, ?> map) {
             return map.get(block);
         }
-        Method getter = Arrays.stream(registry.getClass().getMethods())
-                .filter(method -> method.getName().equals("get"))
-                .filter(method -> method.getParameterCount() == 1)
-                .filter(method -> method.getParameterTypes()[0].isAssignableFrom(block.getClass())
-                        || method.getParameterTypes()[0].isAssignableFrom(Block.class))
-                .findFirst()
-                .orElse(null);
-        if (getter == null) {
-            return null;
-        }
         try {
+            Class<?> registryApi = Class.forName(SIMPLE_REGISTRY_CLASS);
+            Method getter = Arrays.stream(registryApi.getMethods())
+                    .filter(method -> method.getName().equals("get"))
+                    .filter(method -> method.getParameterCount() == 1)
+                    .filter(method -> method.getParameterTypes()[0].isInstance(block))
+                    .findFirst()
+                    .orElse(null);
+            if (getter == null) {
+                return null;
+            }
             Object value = getter.invoke(registry, block);
             return unwrapProvider(value, block);
-        } catch (IllegalAccessException | InvocationTargetException exception) {
+        } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Create registry lookup failed", exception);
         }
     }
@@ -307,18 +355,27 @@ final class CreateRuntimeIntrospection {
             String subsystem,
             String status,
             int rowCount,
-            Exception exception
+            Throwable exception
     ) {
+        Throwable cause = exception == null ? null : rootCause(exception);
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("subsystem", subsystem);
         row.put("status", status);
         row.put("row_count", rowCount);
-        row.put("error_class", exception == null ? null : exception.getClass().getName());
-        row.put("error_message", exception == null ? null : safeMessage(exception));
+        row.put("error_class", cause == null ? null : cause.getClass().getName());
+        row.put("error_message", cause == null ? null : safeMessage(cause));
         return row;
     }
 
-    private String safeMessage(Exception exception) {
+    private Throwable rootCause(Throwable exception) {
+        Throwable current = exception;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private String safeMessage(Throwable exception) {
         String message = exception.getMessage();
         if (message == null || message.isBlank()) {
             return "No diagnostic message was provided.";
