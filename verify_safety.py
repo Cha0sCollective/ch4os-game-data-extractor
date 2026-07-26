@@ -66,7 +66,7 @@ def main() -> int:
         "official server-pack project/file": "mods/1518930/files/8478465/download",
         "official server-pack hash": "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b",
         "official server-pack byte size": "314214774",
-        "exporter jar hash verification": "create_runtime_exporter-0.1.1.sha256",
+        "exporter jar hash verification": "create_runtime_exporter-0.1.2.sha256",
         "separate local working root": "CreateHandbookExporter",
         "disposable marker": ".handbook-disposable-instance",
         "loopback-only server": '"server-ip" -Value "127.0.0.1"',
@@ -81,6 +81,10 @@ def main() -> int:
         "download explanation": "It may perform up to three additional setup downloads",
         "completion summary": "EXPORT COMPLETE",
         "failure summary": "EXPORT FAILED during",
+        "primitive size comparison": "$actualBytes -ne $ExpectedBytes",
+        "size-path regression test": "-ExpectedBytes $validationBytes",
+        "administrator refusal": "Do not run this exporter as Administrator",
+        "partial-download recovery": "Recovered the complete verified download from the previous run",
     }
     for label, needle in runner_required.items():
         if needle not in runner_text:

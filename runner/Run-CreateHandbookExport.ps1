@@ -22,8 +22,8 @@ $ServerPackFileName = "All_of_Create_-_Aeronautics_v2.1_serverpack.zip"
 $ServerPackSha256 = "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b"
 $ServerPackBytes = 314214774
 $MinecraftEulaUrl = "https://www.minecraft.net/eula"
-$ExporterJarName = "create_runtime_exporter-0.1.1.jar"
-$ExporterHashFileName = "create_runtime_exporter-0.1.1.sha256"
+$ExporterJarName = "create_runtime_exporter-0.1.2.jar"
+$ExporterHashFileName = "create_runtime_exporter-0.1.2.sha256"
 $ExpectedMinecraftVersion = "1.21.1"
 $ExpectedNeoForgeVersion = "21.1.233"
 $ExpectedPackVersion = "v2.1"
@@ -78,17 +78,17 @@ function Assert-FileHash {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$ExpectedSha256,
-        [Nullable[long]]$ExpectedBytes
+        [long]$ExpectedBytes = -1
     )
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Required file is missing: $Path"
     }
 
-    if ($null -ne $ExpectedBytes) {
+    if ($ExpectedBytes -ge 0) {
         $actualBytes = (Get-Item -LiteralPath $Path).Length
-        if ($actualBytes -ne $ExpectedBytes.Value) {
-            throw "File-size check failed for $Path. Expected $($ExpectedBytes.Value) bytes; found $actualBytes."
+        if ($actualBytes -ne $ExpectedBytes) {
+            throw "File-size check failed for $Path. Expected $ExpectedBytes bytes; found $actualBytes."
         }
     }
 
@@ -96,6 +96,12 @@ function Assert-FileHash {
     if ($actualHash -ne $ExpectedSha256.ToLowerInvariant()) {
         throw "SHA-256 check failed for $Path. The file will not be used."
     }
+}
+
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
 function Assert-DisposablePath {
@@ -195,10 +201,20 @@ if ($exporterHash -notmatch "^[0-9a-fA-F]{64}$") {
 Assert-FileHash -Path $exporterJar -ExpectedSha256 $exporterHash
 
 if ($ValidateOnly) {
+    $validationBytes = (Get-Item -LiteralPath $exporterJar).Length
+    Assert-FileHash `
+        -Path $exporterJar `
+        -ExpectedSha256 $exporterHash `
+        -ExpectedBytes $validationBytes
     Write-Host "Runner package validation passed." -ForegroundColor Green
+    Write-Host "File-size validation path passed with a primitive Int64 value."
     Write-Host "Official server pack: project 1518930, file 8478465"
     Write-Host "Locked runtime: Minecraft $ExpectedMinecraftVersion, NeoForge $ExpectedNeoForgeVersion, pack $ExpectedPackVersion"
     exit 0
+}
+
+if (Test-IsAdministrator) {
+    throw "Do not run this exporter as Administrator. It is designed for standard-user execution and refuses elevated privileges."
 }
 
 $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
@@ -236,6 +252,7 @@ Write-Host "Every major operation is timestamped below. A transcript is saved fo
 Write-Stage -Number 1 -Title "Validate runner and version locks" `
     -Detail "Checking the bundled exporter and declaring the exact supported modpack runtime."
 Write-Status "Exporter jar verified: $ExporterJarName"
+Write-Status "Privilege level: standard user (required)."
 Write-Status "Locked runtime: Minecraft $ExpectedMinecraftVersion; NeoForge $ExpectedNeoForgeVersion; pack $ExpectedPackVersion."
 Write-Status "Scope: $Scope"
 Write-Status "Human-readable run log: $script:RunLogPath"
@@ -258,15 +275,27 @@ if ([string]::IsNullOrWhiteSpace($ServerPackPath)) {
         }
     }
 
+    $partialPath = "$ServerPackPath.partial"
+    if ($needDownload -and (Test-Path -LiteralPath $partialPath -PathType Leaf)) {
+        Write-Status "Found a previous server-pack download that did not reach the cache-promotion step."
+        Write-Status "Verifying it before deciding whether another 300 MB download is necessary."
+        try {
+            Assert-FileHash -Path $partialPath -ExpectedSha256 $ServerPackSha256 -ExpectedBytes $ServerPackBytes
+            Move-Item -LiteralPath $partialPath -Destination $ServerPackPath
+            $needDownload = $false
+            Write-Status "Recovered the complete verified download from the previous run; no re-download is needed."
+        } catch {
+            $invalidPartialPath = "$partialPath.invalid-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
+            Move-Item -LiteralPath $partialPath -Destination $invalidPartialPath
+            Write-Warning "The previous partial file was incomplete or invalid and was preserved at: $invalidPartialPath"
+        }
+    }
+
     if ($needDownload) {
         Write-Status "Download 1: official All of Create - Aeronautics v2.1 server pack."
         Write-Status "Source: CurseForge project 1518930, file 8478465."
         Write-Status "Expected size: 314,214,774 bytes (about 300 MB)."
         Write-Status "This file contains the stock server configuration and mod jars."
-        $partialPath = "$ServerPackPath.partial"
-        if (Test-Path -LiteralPath $partialPath) {
-            Remove-Item -LiteralPath $partialPath -Force
-        }
         $downloadStarted = [DateTime]::UtcNow
         Invoke-WebRequest -UseBasicParsing -Uri $ServerPackUrl -OutFile $partialPath
         $downloadSeconds = [Math]::Round(([DateTime]::UtcNow - $downloadStarted).TotalSeconds, 1)
