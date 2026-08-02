@@ -14,6 +14,11 @@ Run it
    - Double-click Run-CreateHandbookExport.cmd for the ten-item sample.
    - Double-click Run-Full-CreateHandbookExport.cmd for every registered
      Create item and block supported by the exporter.
+   - Double-click Run-Pack-HandbookExport.cmd for every loaded item and block,
+     every effective recipe, and all resolved item/block tag memberships in
+     the stock v2.1 dedicated-server runtime. This mode also inventories exact
+     installed artifact hashes, safe internal paths, mixin declarations, and
+     Java service providers without copying archive content.
 3. Review the Minecraft EULA link shown by the runner.
 4. Type I ACCEPT only if you accept the EULA. Capitalization and accidental
    surrounding or repeated spaces are ignored.
@@ -44,7 +49,7 @@ When the exporter begins collecting data, look for lines beginning with:
 
   [HANDBOOK EXPORT]
 
-Those lines report each of the ten data-collection stages and the number of
+Those lines report each of the eleven data-collection stages and the number of
 records found. A readable transcript of the whole process and the preserved
 Minecraft/NeoForge log are placed beside the clean result ZIP.
 
@@ -73,18 +78,18 @@ Safety notes
   local account name.
 - A complete verified `.partial` server-pack download left by an interrupted
   or older run is recovered instead of downloaded again.
-- No textures, models, jars, worlds, player data, or credentials are placed
-  in the clean output ZIP.
+- No raw archive content, textures, models, sounds, jars, worlds, player data,
+  or credentials are placed in the clean output ZIP.
 
 Advanced usage
 --------------
 The PowerShell script accepts:
 
-  -Scope sample|full
+  -Scope sample|full|pack
   -ServerPackPath <path to an already-downloaded official server-pack ZIP>
   -OutputRoot <absolute output folder>
   -KeepWorkDirectory
   -ValidateOnly
 
 The default script scope remains `sample`; the full launcher explicitly passes
-`-Scope full`.
+`-Scope full`, and the pack launcher passes `-Scope pack`.

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("sample", "full")]
+    [ValidateSet("sample", "full", "pack")]
     [string]$Scope = "sample",
 
     [string]$ServerPackPath,
@@ -22,8 +22,8 @@ $ServerPackFileName = "All_of_Create_-_Aeronautics_v2.1_serverpack.zip"
 $ServerPackSha256 = "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b"
 $ServerPackBytes = 314214774
 $MinecraftEulaUrl = "https://www.minecraft.net/eula"
-$ExporterJarName = "create_runtime_exporter-0.2.2.jar"
-$ExporterHashFileName = "create_runtime_exporter-0.2.2.sha256"
+$ExporterJarName = "create_runtime_exporter-0.4.0.jar"
+$ExporterHashFileName = "create_runtime_exporter-0.4.0.sha256"
 $ExpectedMinecraftVersion = "1.21.1"
 $ExpectedNeoForgeVersion = "21.1.233"
 $ExpectedPackVersion = "v2.1"
@@ -321,6 +321,15 @@ if ($Scope -eq "full") {
     if ($fullResponse -ine "EXPORT ALL CREATE FACTS") {
         throw "Full-export confirmation was not provided."
     }
+} elseif ($Scope -eq "pack") {
+    Write-Host ""
+    Write-Host "Pack scope exports every loaded item and block, every effective recipe, and all resolved item/block tag memberships."
+    Write-Host "It also inventories installed mod filenames, SHA-256 hashes, safe archive paths, mixin declarations, and Java service providers."
+    Write-Host "The output remains factual JSON/JSONL only; no jars, archive contents, textures, models, sounds, worlds, or player data are copied."
+    $packResponse = ((Read-Host "Type EXPORT ALL PACK FACTS to continue").Trim() -replace "\s+", " ")
+    if ($packResponse -ine "EXPORT ALL PACK FACTS") {
+        throw "Pack-export confirmation was not provided."
+    }
 }
 Write-Status "Export scope confirmed: $Scope"
 
@@ -388,6 +397,7 @@ $runtimeEnvironment = @{
     "HANDBOOK_EXPORT_OUTPUT" = $outputDirectory
     "HANDBOOK_EXPORT_AUTOSTOP" = "true"
     "HANDBOOK_EXPORT_FULL_CONFIRM" = if ($Scope -eq "full") { "EXPORT_ALL_CREATE_RUNTIME_FACTS" } else { "" }
+    "HANDBOOK_EXPORT_PACK_CONFIRM" = if ($Scope -eq "pack") { "EXPORT_ALL_PACK_RUNTIME_FACTS" } else { "" }
 }
 
 Write-Stage -Number 5 -Title "Bootstrap Minecraft, NeoForge, and the exporter" `
@@ -453,9 +463,13 @@ if (-not (Test-Path -LiteralPath $provenancePath -PathType Leaf)) {
 }
 $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
 Write-Status "Observed $($provenance.counts.mods) loaded mods."
-Write-Status "Captured $($provenance.counts.items) items, $($provenance.counts.blocks) blocks, and $($provenance.counts.recipes) Create-related recipes."
+Write-Status "Captured $($provenance.counts.items) items, $($provenance.counts.blocks) blocks, and $($provenance.counts.recipes) effective recipes for scope '$Scope'."
 Write-Status "Captured $($provenance.counts.item_tag_memberships) item-tag and $($provenance.counts.block_tag_memberships) block-tag memberships."
 Write-Status "Captured $($provenance.counts.mechanics) effective mechanics facts and $($provenance.counts.effective_config_values) effective server/common settings."
+if ($Scope -eq "pack") {
+    Write-Status "Inventoried $($provenance.counts.installed_artifacts) installed artifacts and $($provenance.counts.artifact_entries) safe archive-entry locations."
+    Write-Status "Captured $($provenance.counts.mixin_configs) mixin configurations and $($provenance.counts.service_descriptors) Java service descriptors."
+}
 
 $diagnosticsPath = Join-Path $outputDirectory "introspection-diagnostics.jsonl"
 if (-not (Test-Path -LiteralPath $diagnosticsPath -PathType Leaf)) {
@@ -479,6 +493,21 @@ if ($diagnosticFindings.Count -gt 0) {
     }
 } else {
     Write-Status "Create stress-registry, server-config, and common-config introspection completed successfully."
+}
+
+$artifactDiagnosticsPath = Join-Path $outputDirectory "artifact-diagnostics.jsonl"
+if (-not (Test-Path -LiteralPath $artifactDiagnosticsPath -PathType Leaf)) {
+    throw "Runtime export is incomplete: artifact-diagnostics.jsonl is missing."
+}
+$artifactDiagnostics = @(
+    Get-Content -LiteralPath $artifactDiagnosticsPath |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        ForEach-Object { $_ | ConvertFrom-Json }
+)
+if ($artifactDiagnostics.Count -gt 0) {
+    Write-Warning "Installed-artifact inventory preserved $($artifactDiagnostics.Count) diagnostic row(s) for review."
+} elseif ($Scope -eq "pack") {
+    Write-Status "Installed-artifact metadata inventory completed without diagnostics."
 }
 
 $reconciliationPath = Join-Path $outputDirectory "sample-reconciliation.json"

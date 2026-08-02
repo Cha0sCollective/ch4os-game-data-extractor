@@ -32,9 +32,48 @@ memberships, 1,309 mechanics facts, and 102 server/common settings. All 699
 runtime item IDs reconciled without an unexplained entry. See
 [`../../testing/create-runtime-exporter-0.2.2-full.md`](../../testing/create-runtime-exporter-0.2.2-full.md).
 
-Creative tabs, localized client tooltips, baked models, textures, renderers,
-inventories, and fluid capacities remain deferred. Model and texture metadata
-is captured separately from pinned source without redistributing raw assets.
+## Phase 2B pack-wide capture
+
+Version 0.4.0 retains the explicitly confirmed `pack` scope introduced in
+0.3.0. It reuses the
+same verified disposable v2.1 server and safety boundary, but records every
+loaded item and block, every effective recipe after datapack loading, and all
+resolved item/block tag memberships. Create stress/config introspection remains
+available in this mode and may also expose foreign registrations placed into
+Create's public stress registries.
+
+The 0.4.0 pack run also creates a metadata-only map of the exact installed mod
+artifacts:
+
+- artifact filename, byte size, SHA-256, loader metadata locations, and
+  declared mod IDs;
+- safe archive entry paths, entry type, logical resource ID where derivable,
+  Java class name, size, compressed size, and CRC;
+- mixin configuration declarations, packages, plugins, refmaps, and declared
+  mixin class names;
+- Java service interfaces and provider class names; and
+- bounded-read or malformed-archive diagnostics.
+
+This map is intended to answer “which exact artifact and internal location
+should we inspect for this question?” It does not copy a JAR or the contents of
+any class, recipe, model, texture, sound, or other archive member.
+
+The pack-wide run is intentionally broad. The downstream catalog applies the
+97-target gameplay classification and retains vanilla/other-mod rows when they
+are needed to explain recipes, tags, or pack overrides. This is safer than
+discarding cross-namespace evidence during collection.
+
+The first 0.4.0 `pack` field run passed on 2026-07-29. It authenticated 180
+installed artifacts, 148,966 safe entry locations, 257 mixin configurations,
+and 130 Java service descriptors with zero artifact diagnostics. The receiver
+also matched every one of the 97 gameplay targets to its expected installed
+JAR and declared mod ID. See
+[`../../testing/create-runtime-exporter-0.4.0-pack.md`](../../testing/create-runtime-exporter-0.4.0-pack.md).
+
+Creative tabs, localized client tooltips, baked models, renderers, inventories,
+and fluid capacities remain deferred. The new archive-location map identifies
+where model and texture resources exist, while source-backed extraction can
+still add semantic metadata without redistributing raw assets.
 
 ## Safety contract
 
@@ -54,7 +93,8 @@ The exporter:
 - performs no network requests;
 - registers no items, blocks, recipes, commands, mixins, access transformers,
   or coremods;
-- exports no textures, models, jars, world data, player data, or credentials.
+- exports no raw archive contents, textures, models, sounds, jars, world data,
+  player data, or credentials.
 
 `verify_safety.py` enforces this boundary in CI.
 
@@ -76,7 +116,9 @@ The GitHub Actions artifact contains the exporter jar, its SHA-256 checksum,
 and the files in `runner/`. After extracting the artifact, choose:
 
 - `Run-CreateHandbookExport.cmd` for the ten-item sample; or
-- `Run-Full-CreateHandbookExport.cmd` for the full Create namespace.
+- `Run-Full-CreateHandbookExport.cmd` for the full Create namespace; or
+- `Run-Pack-HandbookExport.cmd` for the complete loaded pack registry/recipe
+  snapshot.
 
 The runner:
 
@@ -94,7 +136,7 @@ The runner:
   `%USERPROFILE%\Documents\Create-Handbook-Exports`;
 - reports eight numbered, timestamped runner stages and explains every
   expected setup download before handing control to the stock server script;
-- emits `[HANDBOOK EXPORT]` progress lines for each of ten runtime
+- emits `[HANDBOOK EXPORT]` progress lines for each of eleven runtime
   data-collection stages and reports record counts;
 - retains a human-readable runner transcript and the Minecraft/NeoForge
   `latest.log` beside the clean result ZIP under
@@ -122,8 +164,15 @@ Full-namespace export additionally requires:
 -Dhandbook.export.fullConfirm=EXPORT_ALL_CREATE_RUNTIME_FACTS
 ```
 
-The default remains the ten-item sample. Full scope has an additional
-interactive confirmation and exporter confirmation token.
+Pack-wide export uses:
+
+```text
+-Dhandbook.export.scope=pack
+-Dhandbook.export.packConfirm=EXPORT_ALL_PACK_RUNTIME_FACTS
+```
+
+The default remains the ten-item sample. Full and pack scopes each have their
+own interactive confirmation and exporter confirmation token.
 
 ## Runtime diagnostics and sample reconciliation
 

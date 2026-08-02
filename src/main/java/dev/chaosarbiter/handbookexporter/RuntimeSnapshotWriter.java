@@ -17,6 +17,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.neoforged.fml.ModList;
+import net.neoforged.fml.loading.FMLPaths;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -54,9 +55,11 @@ final class RuntimeSnapshotWriter {
     RuntimeSnapshotWriter(MinecraftServer server, ExporterSettings settings) {
         this.server = server;
         this.settings = settings;
-        this.inScope = settings.scope().equals("full")
-                ? id -> id.getNamespace().equals("create")
-                : id -> SAMPLE_IDS.contains(id.toString());
+        this.inScope = switch (settings.scope()) {
+            case "pack" -> id -> true;
+            case "full" -> id -> id.getNamespace().equals("create");
+            default -> id -> SAMPLE_IDS.contains(id.toString());
+        };
     }
 
     Map<String, Object> write() throws IOException {
@@ -67,7 +70,7 @@ final class RuntimeSnapshotWriter {
         List<Map<String, ?>> mods = collectMods();
         progressCount("loaded mods", mods.size());
 
-        progress(2, "Collecting in-scope Create item registrations and default stack facts.");
+        progress(2, "Collecting in-scope item registrations and default stack facts.");
         List<Map<String, ?>> items = collectItems();
         progressCount("items", items.size());
 
@@ -75,7 +78,7 @@ final class RuntimeSnapshotWriter {
         List<Map<String, ?>> blocks = collectBlocks();
         progressCount("blocks", blocks.size());
 
-        progress(4, "Collecting effective Create-related recipe headers after datapack loading.");
+        progress(4, "Collecting effective in-scope recipe headers after datapack loading.");
         List<Map<String, ?>> recipes = collectRecipes();
         progressCount("recipes", recipes.size());
 
@@ -94,7 +97,22 @@ final class RuntimeSnapshotWriter {
         progressCount("effective mechanics facts", introspection.mechanics().size());
         progressCount("effective server/common configuration values", introspection.configs().size());
 
-        progress(7, "Writing JSONL evidence files with non-overwriting writes.");
+        progress(7, "Inventorying exact installed mod artifacts without extracting archive content.");
+        InstalledArtifactInventory.Result artifactInventory = settings.scope().equals("pack")
+                ? InstalledArtifactInventory.collect(FMLPaths.GAMEDIR.get())
+                : InstalledArtifactInventory.Result.empty();
+        progressCount("installed mod artifacts", artifactInventory.artifacts().size());
+        progressCount("safe archive entry locations", artifactInventory.entries().size());
+        progressCount("mixin configurations", artifactInventory.mixinConfigs().size());
+        progressCount("Java service descriptors", artifactInventory.services().size());
+        if (!artifactInventory.diagnostics().isEmpty()) {
+            LOGGER.warn(
+                    "[HANDBOOK EXPORT] Artifact inventory preserved {} diagnostic row(s) for review.",
+                    artifactInventory.diagnostics().size()
+            );
+        }
+
+        progress(8, "Writing JSONL evidence files with non-overwriting writes.");
         JsonFiles.writeJsonLines(output.resolve("mods.jsonl"), mods);
         JsonFiles.writeJsonLines(output.resolve("items.jsonl"), items);
         JsonFiles.writeJsonLines(output.resolve("blocks.jsonl"), blocks);
@@ -107,8 +125,28 @@ final class RuntimeSnapshotWriter {
                 output.resolve("introspection-diagnostics.jsonl"),
                 introspection.diagnostics()
         );
+        JsonFiles.writeJsonLines(
+                output.resolve("installed-artifacts.jsonl"),
+                artifactInventory.artifacts()
+        );
+        JsonFiles.writeJsonLines(
+                output.resolve("artifact-entries.jsonl"),
+                artifactInventory.entries()
+        );
+        JsonFiles.writeJsonLines(
+                output.resolve("mixin-configs.jsonl"),
+                artifactInventory.mixinConfigs()
+        );
+        JsonFiles.writeJsonLines(
+                output.resolve("service-providers.jsonl"),
+                artifactInventory.services()
+        );
+        JsonFiles.writeJsonLines(
+                output.resolve("artifact-diagnostics.jsonl"),
+                artifactInventory.diagnostics()
+        );
 
-        progress(8, "Writing provenance and sample reconciliation.");
+        progress(9, "Writing provenance and sample reconciliation.");
         Map<String, Object> provenance = provenance(
                 mods,
                 items,
@@ -117,14 +155,15 @@ final class RuntimeSnapshotWriter {
                 itemTags,
                 blockTags,
                 introspection.mechanics(),
-                introspection.configs()
+                introspection.configs(),
+                artifactInventory
         );
         JsonFiles.writeJson(output.resolve("provenance.json"), provenance);
 
         Map<String, Object> reconciliation = sampleReconciliation(items, blocks);
         JsonFiles.writeJson(output.resolve("sample-reconciliation.json"), reconciliation);
 
-        progress(9, "Hashing the completed evidence files.");
+        progress(10, "Hashing the completed evidence files.");
         List<Map<String, Object>> files = new ArrayList<>();
         try (var paths = Files.list(output)) {
             paths.filter(Files::isRegularFile)
@@ -147,14 +186,14 @@ final class RuntimeSnapshotWriter {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("format", "create-handbook-runtime-export-v1");
         manifest.put("files", files);
-        progress(10, "Writing the final manifest.");
+        progress(11, "Writing the final manifest.");
         JsonFiles.writeJson(output.resolve("manifest.json"), manifest);
-        LOGGER.info("[HANDBOOK EXPORT] All 10 collection stages completed.");
+        LOGGER.info("[HANDBOOK EXPORT] All 11 collection stages completed.");
         return provenance;
     }
 
     private void progress(int stage, String message) {
-        LOGGER.info("[HANDBOOK EXPORT] Data stage {}/10 - {}", stage, message);
+        LOGGER.info("[HANDBOOK EXPORT] Data stage {}/11 - {}", stage, message);
     }
 
     private void progressCount(String label, int count) {
@@ -263,7 +302,9 @@ final class RuntimeSnapshotWriter {
                     Map<String, Object> row = recipeRow(holder);
                     String id = (String) row.get("id");
                     String resultId = (String) row.get("result_item_id");
-                    if (id.startsWith("create:") || (resultId != null && resultId.startsWith("create:"))) {
+                    if (settings.scope().equals("pack")
+                            || id.startsWith("create:")
+                            || (resultId != null && resultId.startsWith("create:"))) {
                         rows.add(row);
                     }
                 });
@@ -330,7 +371,8 @@ final class RuntimeSnapshotWriter {
             List<Map<String, ?>> itemTags,
             List<Map<String, ?>> blockTags,
             List<Map<String, ?>> mechanics,
-            List<Map<String, ?>> configs
+            List<Map<String, ?>> configs,
+            InstalledArtifactInventory.Result artifactInventory
     ) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("format", "create-handbook-runtime-export-v1");
@@ -340,21 +382,30 @@ final class RuntimeSnapshotWriter {
         row.put("create_version", modVersion("create"));
         row.put("declared_pack_version", settings.declaredPackVersionValue());
         row.put("scope", settings.scope());
+        row.put("pack_wide_registry_capture", settings.scope().equals("pack"));
         row.put("sample_ids", SAMPLE_IDS.stream().sorted().toList());
         row.put("dedicated_server", true);
         row.put("connected_players", server.getPlayerList().getPlayerCount());
         row.put("raw_assets_exported", false);
+        row.put("installed_artifact_metadata_capture", settings.scope().equals("pack"));
+        row.put("raw_jars_exported", false);
+        row.put("raw_archive_content_exported", false);
         row.put("network_requests_performed", false);
-        row.put("counts", Map.of(
-                "mods", mods.size(),
-                "items", items.size(),
-                "blocks", blocks.size(),
-                "recipes", recipes.size(),
-                "item_tag_memberships", itemTags.size(),
-                "block_tag_memberships", blockTags.size(),
-                "mechanics", mechanics.size(),
-                "effective_config_values", configs.size()
-        ));
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        counts.put("mods", mods.size());
+        counts.put("items", items.size());
+        counts.put("blocks", blocks.size());
+        counts.put("recipes", recipes.size());
+        counts.put("item_tag_memberships", itemTags.size());
+        counts.put("block_tag_memberships", blockTags.size());
+        counts.put("mechanics", mechanics.size());
+        counts.put("effective_config_values", configs.size());
+        counts.put("installed_artifacts", artifactInventory.artifacts().size());
+        counts.put("artifact_entries", artifactInventory.entries().size());
+        counts.put("mixin_configs", artifactInventory.mixinConfigs().size());
+        counts.put("service_descriptors", artifactInventory.services().size());
+        counts.put("artifact_diagnostics", artifactInventory.diagnostics().size());
+        row.put("counts", counts);
         return row;
     }
 

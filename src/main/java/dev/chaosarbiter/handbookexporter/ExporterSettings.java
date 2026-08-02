@@ -8,6 +8,7 @@ import java.util.Locale;
 final class ExporterSettings {
     static final String CONFIRMATION = "DISPOSABLE_INSTANCE";
     static final String FULL_CONFIRMATION = "EXPORT_ALL_CREATE_RUNTIME_FACTS";
+    static final String PACK_CONFIRMATION = "EXPORT_ALL_PACK_RUNTIME_FACTS";
 
     private final Path outputDirectory;
     private final String scope;
@@ -61,8 +62,12 @@ final class ExporterSettings {
                 "sample"
         )
                 .trim().toLowerCase(Locale.ROOT);
-        if (!scope.equals("sample") && !scope.equals("full")) {
-            throw new IllegalStateException("handbook.export.scope must be sample or full");
+        if (!scope.equals("sample")
+                && !scope.equals("full")
+                && !scope.equals("pack")) {
+            throw new IllegalStateException(
+                    "handbook.export.scope must be sample, full, or pack"
+            );
         }
         if (scope.equals("full")
                 && !FULL_CONFIRMATION.equals(value(
@@ -71,6 +76,14 @@ final class ExporterSettings {
                         ""
                 ))) {
             throw new IllegalStateException("full-export confirmation is missing");
+        }
+        if (scope.equals("pack")
+                && !PACK_CONFIRMATION.equals(value(
+                        "handbook.export.packConfirm",
+                        "HANDBOOK_EXPORT_PACK_CONFIRM",
+                        ""
+                ))) {
+            throw new IllegalStateException("pack-export confirmation is missing");
         }
 
         return new ExporterSettings(output, scope, declaredPackVersion());
