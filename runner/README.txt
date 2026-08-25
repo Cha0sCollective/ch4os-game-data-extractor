@@ -15,7 +15,8 @@ Run it
    - Double-click Run-Full-CreateHandbookExport.cmd for every registered
      Create item and block supported by the exporter.
    - Double-click Run-Pack-HandbookExport.cmd for every loaded item and block,
-     every effective recipe, and all resolved item/block tag memberships in
+     every effective recipe, direct registry identities, and resolved registry
+     tag memberships in
      the stock v2.1 dedicated-server runtime. This mode also inventories exact
      installed artifact hashes, safe internal paths, mixin declarations, and
      Java service providers without copying archive content.
@@ -49,7 +50,7 @@ When the exporter begins collecting data, look for lines beginning with:
 
   [HANDBOOK EXPORT]
 
-Those lines report each of the eleven data-collection stages and the number of
+Those lines report each of the twelve data-collection stages and the number of
 records found. A readable transcript of the whole process and the preserved
 Minecraft/NeoForge log are placed beside the clean result ZIP.
 
@@ -89,6 +90,9 @@ The PowerShell script accepts:
   -ServerPackPath <path to an already-downloaded official server-pack ZIP>
   -OutputRoot <absolute output folder>
   -KeepWorkDirectory
+  -AcceptMinecraftEula
+  -AcceptExportScope
+  -NoOpenExplorer
   -ValidateOnly
 
 The default script scope remains `sample`; the full launcher explicitly passes

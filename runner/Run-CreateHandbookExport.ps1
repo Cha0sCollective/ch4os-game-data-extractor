@@ -11,6 +11,10 @@ param(
 
     [switch]$AcceptMinecraftEula,
 
+    [switch]$AcceptExportScope,
+
+    [switch]$NoOpenExplorer,
+
     [switch]$ValidateOnly
 )
 
@@ -22,8 +26,8 @@ $ServerPackFileName = "All_of_Create_-_Aeronautics_v2.1_serverpack.zip"
 $ServerPackSha256 = "4b835f2362dd97b62d03c6322febebcd3490f2c00b4114f4b972b46e818a5c8b"
 $ServerPackBytes = 314214774
 $MinecraftEulaUrl = "https://www.minecraft.net/eula"
-$ExporterJarName = "create_runtime_exporter-0.4.0.jar"
-$ExporterHashFileName = "create_runtime_exporter-0.4.0.sha256"
+$ExporterJarName = "create_runtime_exporter-0.5.0.jar"
+$ExporterHashFileName = "create_runtime_exporter-0.5.0.sha256"
 $ExpectedMinecraftVersion = "1.21.1"
 $ExpectedNeoForgeVersion = "21.1.233"
 $ExpectedPackVersion = "v2.1"
@@ -317,18 +321,22 @@ Write-Status "Minecraft EULA acceptance confirmed for this local disposable-serv
 if ($Scope -eq "full") {
     Write-Host ""
     Write-Host "Full scope exports every loaded create:* item and block fact supported by this exporter."
-    $fullResponse = ((Read-Host "Type EXPORT ALL CREATE FACTS to continue").Trim() -replace "\s+", " ")
-    if ($fullResponse -ine "EXPORT ALL CREATE FACTS") {
-        throw "Full-export confirmation was not provided."
+    if (-not $AcceptExportScope) {
+        $fullResponse = ((Read-Host "Type EXPORT ALL CREATE FACTS to continue").Trim() -replace "\s+", " ")
+        if ($fullResponse -ine "EXPORT ALL CREATE FACTS") {
+            throw "Full-export confirmation was not provided."
+        }
     }
 } elseif ($Scope -eq "pack") {
     Write-Host ""
-    Write-Host "Pack scope exports every loaded item and block, every effective recipe, and all resolved item/block tag memberships."
+    Write-Host "Pack scope exports every loaded item and block, every effective recipe, all direct registry identities, and resolved registry tags."
     Write-Host "It also inventories installed mod filenames, SHA-256 hashes, safe archive paths, mixin declarations, and Java service providers."
     Write-Host "The output remains factual JSON/JSONL only; no jars, archive contents, textures, models, sounds, worlds, or player data are copied."
-    $packResponse = ((Read-Host "Type EXPORT ALL PACK FACTS to continue").Trim() -replace "\s+", " ")
-    if ($packResponse -ine "EXPORT ALL PACK FACTS") {
-        throw "Pack-export confirmation was not provided."
+    if (-not $AcceptExportScope) {
+        $packResponse = ((Read-Host "Type EXPORT ALL PACK FACTS to continue").Trim() -replace "\s+", " ")
+        if ($packResponse -ine "EXPORT ALL PACK FACTS") {
+            throw "Pack-export confirmation was not provided."
+        }
     }
 }
 Write-Status "Export scope confirmed: $Scope"
@@ -456,6 +464,44 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     throw "Runtime export failed. No output ZIP was created."
 }
 Write-Status "Export manifest found."
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if ($manifest.format -ne "create-handbook-runtime-export-v1") {
+    throw "Runtime export manifest uses an unsupported format: $($manifest.format)"
+}
+$listedNames = @()
+foreach ($record in @($manifest.files)) {
+    $name = [string]$record.name
+    if ([string]::IsNullOrWhiteSpace($name) -or [System.IO.Path]::GetFileName($name) -ne $name) {
+        throw "Runtime export manifest contains an unsafe file name: $name"
+    }
+    if ($listedNames -contains $name) {
+        throw "Runtime export manifest lists a file more than once: $name"
+    }
+    $listedNames += $name
+    $evidencePath = Join-Path $outputDirectory $name
+    Assert-FileHash `
+        -Path $evidencePath `
+        -ExpectedSha256 ([string]$record.sha256) `
+        -ExpectedBytes ([long]$record.bytes)
+}
+foreach ($requiredEvidenceName in @(
+    "mods.jsonl",
+    "items.jsonl",
+    "blocks.jsonl",
+    "recipes.jsonl",
+    "registry-summaries.jsonl",
+    "registry-entries.jsonl",
+    "registry-tags.jsonl",
+    "installed-artifacts.jsonl",
+    "artifact-entries.jsonl",
+    "provenance.json",
+    "sample-reconciliation.json"
+)) {
+    if ($listedNames -notcontains $requiredEvidenceName) {
+        throw "Runtime export manifest does not authenticate required evidence: $requiredEvidenceName"
+    }
+}
+Write-Status "Every manifest-listed evidence file passed byte-count and SHA-256 verification."
 
 $provenancePath = Join-Path $outputDirectory "provenance.json"
 if (-not (Test-Path -LiteralPath $provenancePath -PathType Leaf)) {
@@ -465,6 +511,7 @@ $provenance = Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
 Write-Status "Observed $($provenance.counts.mods) loaded mods."
 Write-Status "Captured $($provenance.counts.items) items, $($provenance.counts.blocks) blocks, and $($provenance.counts.recipes) effective recipes for scope '$Scope'."
 Write-Status "Captured $($provenance.counts.item_tag_memberships) item-tag and $($provenance.counts.block_tag_memberships) block-tag memberships."
+Write-Status "Captured $($provenance.counts.registry_entries) identities and $($provenance.counts.registry_tag_memberships) memberships across $($provenance.counts.registry_summaries) registries."
 Write-Status "Captured $($provenance.counts.mechanics) effective mechanics facts and $($provenance.counts.effective_config_values) effective server/common settings."
 if ($Scope -eq "pack") {
     Write-Status "Inventoried $($provenance.counts.installed_artifacts) installed artifacts and $($provenance.counts.artifact_entries) safe archive-entry locations."
@@ -553,9 +600,11 @@ if (Test-Path -LiteralPath $script:MinecraftLogPath -PathType Leaf) {
 }
 
 Stop-RunnerTranscript
-try {
-    Start-Process explorer.exe -ArgumentList "/select,`"$outputZip`""
-} catch {
-    Write-Warning "The export succeeded, but Explorer could not be opened automatically."
+if (-not $NoOpenExplorer) {
+    try {
+        Start-Process explorer.exe -ArgumentList "/select,`"$outputZip`""
+    } catch {
+        Write-Warning "The export succeeded, but Explorer could not be opened automatically."
+    }
 }
 exit 0

@@ -75,6 +75,31 @@ and fluid capacities remain deferred. The new archive-location map identifies
 where model and texture resources exist, while source-backed extraction can
 still add semantic metadata without redistributing raw assets.
 
+## Version 0.5.0 direct registry inventory
+
+Version 0.5.0 adds a generic identity-level inventory of every registry exposed
+through the built-in registry-of-registries or the dedicated server's loaded
+registry access. The authenticated export now includes:
+
+- `registry-summaries.jsonl`, with each registry ID, its access source, and
+  scoped entry and tag-membership counts;
+- `registry-entries.jsonl`, with registry ID, entry ID, namespace,
+  implementation class, and access source; and
+- `registry-tags.jsonl`, with registry ID, tag ID, and member ID.
+
+This closes the prior identity-enumeration gap for registries such as fluids,
+entity types, mob effects, menus, recipe types, recipe serializers, data
+components, particles, sounds, attributes, block-entity types, biomes,
+structures, world generation, and enchantments when those registries are
+present in the dedicated-server runtime. It does not claim display names,
+gameplay behavior, obtainability, recipes, client rendering, or in-game test
+results. Those remain separate source-backed or observation-backed work.
+
+The generic registry files intentionally retain the existing export-v1 envelope
+and all pre-0.5.0 files, so older receivers can ignore the authenticated
+extensions. Pack-wide handoff tooling can use the new files directly instead
+of inferring complete registries from only the recipes that happened to load.
+
 ## Safety contract
 
 The exporter:
@@ -136,8 +161,10 @@ The runner:
   `%USERPROFILE%\Documents\Create-Handbook-Exports`;
 - reports eight numbered, timestamped runner stages and explains every
   expected setup download before handing control to the stock server script;
-- emits `[HANDBOOK EXPORT]` progress lines for each of eleven runtime
+- emits `[HANDBOOK EXPORT]` progress lines for each of twelve runtime
   data-collection stages and reports record counts;
+- verifies every manifest-listed file against its declared byte count and
+  SHA-256 before packaging it;
 - retains a human-readable runner transcript and the Minecraft/NeoForge
   `latest.log` beside the clean result ZIP under
   `%USERPROFILE%\Documents\Create-Handbook-Exports`;
@@ -172,7 +199,10 @@ Pack-wide export uses:
 ```
 
 The default remains the ten-item sample. Full and pack scopes each have their
-own interactive confirmation and exporter confirmation token.
+own interactive confirmation and exporter confirmation token. For an
+owner-approved unattended run, `-AcceptMinecraftEula -AcceptExportScope
+-NoOpenExplorer` records those approvals and suppresses the final Explorer
+window; it does not weaken the exporter-side confirmation tokens.
 
 ## Runtime diagnostics and sample reconciliation
 

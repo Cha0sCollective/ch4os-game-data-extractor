@@ -30,6 +30,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 
 final class RuntimeSnapshotWriter {
@@ -91,13 +93,19 @@ final class RuntimeSnapshotWriter {
                 blockTags.size()
         );
 
-        progress(6, "Reading effective Create stress registries and loaded server/common settings.");
+        progress(6, "Enumerating built-in and datapack-backed registry identities and tags.");
+        RegistryInventory registryInventory = collectRegistryInventory();
+        progressCount("registry summaries", registryInventory.summaries().size());
+        progressCount("registry entries", registryInventory.entries().size());
+        progressCount("registry tag memberships", registryInventory.tags().size());
+
+        progress(7, "Reading effective Create stress registries and loaded server/common settings.");
         CreateRuntimeIntrospection.IntrospectionResult introspection =
                 new CreateRuntimeIntrospection(inScope).collect();
         progressCount("effective mechanics facts", introspection.mechanics().size());
         progressCount("effective server/common configuration values", introspection.configs().size());
 
-        progress(7, "Inventorying exact installed mod artifacts without extracting archive content.");
+        progress(8, "Inventorying exact installed mod artifacts without extracting archive content.");
         InstalledArtifactInventory.Result artifactInventory = settings.scope().equals("pack")
                 ? InstalledArtifactInventory.collect(FMLPaths.GAMEDIR.get())
                 : InstalledArtifactInventory.Result.empty();
@@ -112,13 +120,16 @@ final class RuntimeSnapshotWriter {
             );
         }
 
-        progress(8, "Writing JSONL evidence files with non-overwriting writes.");
+        progress(9, "Writing JSONL evidence files with non-overwriting writes.");
         JsonFiles.writeJsonLines(output.resolve("mods.jsonl"), mods);
         JsonFiles.writeJsonLines(output.resolve("items.jsonl"), items);
         JsonFiles.writeJsonLines(output.resolve("blocks.jsonl"), blocks);
         JsonFiles.writeJsonLines(output.resolve("recipes.jsonl"), recipes);
         JsonFiles.writeJsonLines(output.resolve("item-tags.jsonl"), itemTags);
         JsonFiles.writeJsonLines(output.resolve("block-tags.jsonl"), blockTags);
+        JsonFiles.writeJsonLines(output.resolve("registry-summaries.jsonl"), registryInventory.summaries());
+        JsonFiles.writeJsonLines(output.resolve("registry-entries.jsonl"), registryInventory.entries());
+        JsonFiles.writeJsonLines(output.resolve("registry-tags.jsonl"), registryInventory.tags());
         JsonFiles.writeJsonLines(output.resolve("mechanics.jsonl"), introspection.mechanics());
         JsonFiles.writeJsonLines(output.resolve("config-values.jsonl"), introspection.configs());
         JsonFiles.writeJsonLines(
@@ -146,7 +157,7 @@ final class RuntimeSnapshotWriter {
                 artifactInventory.diagnostics()
         );
 
-        progress(9, "Writing provenance and sample reconciliation.");
+        progress(10, "Writing provenance and sample reconciliation.");
         Map<String, Object> provenance = provenance(
                 mods,
                 items,
@@ -154,6 +165,7 @@ final class RuntimeSnapshotWriter {
                 recipes,
                 itemTags,
                 blockTags,
+                registryInventory,
                 introspection.mechanics(),
                 introspection.configs(),
                 artifactInventory
@@ -163,7 +175,7 @@ final class RuntimeSnapshotWriter {
         Map<String, Object> reconciliation = sampleReconciliation(items, blocks);
         JsonFiles.writeJson(output.resolve("sample-reconciliation.json"), reconciliation);
 
-        progress(10, "Hashing the completed evidence files.");
+        progress(11, "Hashing the completed evidence files.");
         List<Map<String, Object>> files = new ArrayList<>();
         try (var paths = Files.list(output)) {
             paths.filter(Files::isRegularFile)
@@ -186,14 +198,14 @@ final class RuntimeSnapshotWriter {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("format", "create-handbook-runtime-export-v1");
         manifest.put("files", files);
-        progress(11, "Writing the final manifest.");
+        progress(12, "Writing the final manifest.");
         JsonFiles.writeJson(output.resolve("manifest.json"), manifest);
-        LOGGER.info("[HANDBOOK EXPORT] All 11 collection stages completed.");
+        LOGGER.info("[HANDBOOK EXPORT] All 12 collection stages completed.");
         return provenance;
     }
 
     private void progress(int stage, String message) {
-        LOGGER.info("[HANDBOOK EXPORT] Data stage {}/11 - {}", stage, message);
+        LOGGER.info("[HANDBOOK EXPORT] Data stage {}/12 - {}", stage, message);
     }
 
     private void progressCount(String label, int count) {
@@ -345,6 +357,103 @@ final class RuntimeSnapshotWriter {
         return rows;
     }
 
+    private RegistryInventory collectRegistryInventory() {
+        Map<String, RegistryDescriptor> registries = new TreeMap<>();
+        BuiltInRegistries.REGISTRY.entrySet().forEach(entry -> addRegistry(
+                registries,
+                entry.getKey().location(),
+                entry.getValue(),
+                "built_in"
+        ));
+        server.registryAccess().registries().forEach(entry -> addRegistry(
+                registries,
+                entry.key().location(),
+                entry.value(),
+                "server_registry_access"
+        ));
+
+        List<Map<String, ?>> summaries = new ArrayList<>();
+        List<Map<String, ?>> entries = new ArrayList<>();
+        List<Map<String, ?>> tags = new ArrayList<>();
+        registries.forEach((registryId, descriptor) -> collectRegistry(
+                registryId,
+                descriptor.registry,
+                descriptor.accessSources,
+                summaries,
+                entries,
+                tags
+        ));
+        return new RegistryInventory(summaries, entries, tags);
+    }
+
+    private void addRegistry(
+            Map<String, RegistryDescriptor> registries,
+            ResourceLocation registryId,
+            Registry<?> registry,
+            String accessSource
+    ) {
+        RegistryDescriptor descriptor = registries.computeIfAbsent(
+                registryId.toString(),
+                ignored -> new RegistryDescriptor(registry)
+        );
+        descriptor.accessSources.add(accessSource);
+    }
+
+    private <T> void collectRegistry(
+            String registryId,
+            Registry<T> registry,
+            Set<String> accessSources,
+            List<Map<String, ?>> summaries,
+            List<Map<String, ?>> entries,
+            List<Map<String, ?>> tags
+    ) {
+        int entryStart = entries.size();
+        int tagStart = tags.size();
+
+        registry.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(Comparator.comparing(key -> key.location().toString())))
+                .forEach(entry -> {
+                    ResourceLocation entryId = entry.getKey().location();
+                    if (!inScope.test(entryId)) {
+                        return;
+                    }
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("registry_id", registryId);
+                    row.put("entry_id", entryId.toString());
+                    row.put("namespace", entryId.getNamespace());
+                    row.put("implementation_class", entry.getValue().getClass().getName());
+                    row.put("access_sources", List.copyOf(accessSources));
+                    entries.add(row);
+                });
+
+        registry.getTagNames()
+                .sorted(Comparator.comparing(tag -> tag.location().toString()))
+                .forEach(tag -> registry.getTag(tag).ifPresent(named -> {
+                    List<String> members = new ArrayList<>();
+                    for (Holder<T> holder : named) {
+                        holder.unwrapKey().ifPresent(key -> {
+                            if (inScope.test(key.location())) {
+                                members.add(key.location().toString());
+                            }
+                        });
+                    }
+                    members.stream().sorted().forEach(member -> {
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("registry_id", registryId);
+                        row.put("tag", tag.location().toString());
+                        row.put("member", member);
+                        tags.add(row);
+                    });
+                }));
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("registry_id", registryId);
+        summary.put("access_sources", List.copyOf(accessSources));
+        summary.put("entry_count", entries.size() - entryStart);
+        summary.put("tag_membership_count", tags.size() - tagStart);
+        summaries.add(summary);
+    }
+
     private <T> void addTagRows(
             List<Map<String, ?>> rows,
             TagKey<T> tag,
@@ -370,6 +479,7 @@ final class RuntimeSnapshotWriter {
             List<Map<String, ?>> recipes,
             List<Map<String, ?>> itemTags,
             List<Map<String, ?>> blockTags,
+            RegistryInventory registryInventory,
             List<Map<String, ?>> mechanics,
             List<Map<String, ?>> configs,
             InstalledArtifactInventory.Result artifactInventory
@@ -383,6 +493,7 @@ final class RuntimeSnapshotWriter {
         row.put("declared_pack_version", settings.declaredPackVersionValue());
         row.put("scope", settings.scope());
         row.put("pack_wide_registry_capture", settings.scope().equals("pack"));
+        row.put("generic_registry_identity_capture", true);
         row.put("sample_ids", SAMPLE_IDS.stream().sorted().toList());
         row.put("dedicated_server", true);
         row.put("connected_players", server.getPlayerList().getPlayerCount());
@@ -398,6 +509,9 @@ final class RuntimeSnapshotWriter {
         counts.put("recipes", recipes.size());
         counts.put("item_tag_memberships", itemTags.size());
         counts.put("block_tag_memberships", blockTags.size());
+        counts.put("registry_summaries", registryInventory.summaries().size());
+        counts.put("registry_entries", registryInventory.entries().size());
+        counts.put("registry_tag_memberships", registryInventory.tags().size());
         counts.put("mechanics", mechanics.size());
         counts.put("effective_config_values", configs.size());
         counts.put("installed_artifacts", artifactInventory.artifacts().size());
@@ -444,6 +558,22 @@ final class RuntimeSnapshotWriter {
         private ExportFailure(IOException ioException) {
             super(ioException);
             this.ioException = ioException;
+        }
+    }
+
+    private record RegistryInventory(
+            List<Map<String, ?>> summaries,
+            List<Map<String, ?>> entries,
+            List<Map<String, ?>> tags
+    ) {
+    }
+
+    private static final class RegistryDescriptor {
+        private final Registry<?> registry;
+        private final Set<String> accessSources = new TreeSet<>();
+
+        private RegistryDescriptor(Registry<?> registry) {
+            this.registry = registry;
         }
     }
 }
