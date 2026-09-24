@@ -1,0 +1,8 @@
+.gradle/
+build/
+runs/
+*.log
+*.zip
+*.sqlite
+__pycache__/
+.venv/

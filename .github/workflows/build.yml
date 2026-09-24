@@ -1,0 +1,61 @@
+name: Build legacy runtime exporter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out extractor
+        uses: actions/checkout@v5
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+      - name: Verify safety contract
+        run: python verify_safety.py
+      - name: Parse Windows runner
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "runner/Run-CreateHandbookExport.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+      - name: Compile exporter
+        run: bash ./gradlew --no-daemon build
+      - name: Assemble Windows runner bundle
+        run: |
+          mkdir -p build/windows-package
+          cp build/libs/create_runtime_exporter-0.5.0.jar build/windows-package/
+          cp runner/*.cmd runner/*.ps1 runner/README.txt build/windows-package/
+          sha256sum build/libs/create_runtime_exporter-0.5.0.jar \
+            | awk '{print $1}' \
+            > build/windows-package/create_runtime_exporter-0.5.0.sha256
+      - name: Validate assembled Windows runner
+        shell: pwsh
+        run: ./build/windows-package/Run-CreateHandbookExport.ps1 -ValidateOnly
+      - name: Upload Windows runner bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: create-runtime-exporter-windows-0.5.0
+          path: build/windows-package/
+          if-no-files-found: error
+          retention-days: 7
