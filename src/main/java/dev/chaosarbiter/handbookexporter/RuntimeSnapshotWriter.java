@@ -80,9 +80,15 @@ final class RuntimeSnapshotWriter {
         List<Map<String, ?>> blocks = collectBlocks();
         progressCount("blocks", blocks.size());
 
-        progress(4, "Collecting effective in-scope recipe headers after datapack loading.");
+        progress(4, "Collecting effective recipe headers and detailed definitions after datapack loading.");
         List<Map<String, ?>> recipes = collectRecipes();
         progressCount("recipes", recipes.size());
+        List<Map<String, ?>> recipeDetails = collectRecipeDetails(recipes);
+        progressCount("recipe detail rows", recipeDetails.size());
+        List<Map<String, ?>> unloadedRecipeResources = settings.scope().equals("pack")
+                ? UnloadedRecipeResources.collect(server)
+                : List.of();
+        progressCount("unloaded recipe resources (including conditional skips)", unloadedRecipeResources.size());
 
         progress(5, "Resolving loaded item and block tag memberships.");
         List<Map<String, ?>> itemTags = collectTags(BuiltInRegistries.ITEM);
@@ -135,6 +141,8 @@ final class RuntimeSnapshotWriter {
         JsonFiles.writeJsonLines(output.resolve("items.jsonl"), items);
         JsonFiles.writeJsonLines(output.resolve("blocks.jsonl"), blocks);
         JsonFiles.writeJsonLines(output.resolve("recipes.jsonl"), recipes);
+        JsonFiles.writeJsonLines(output.resolve("recipe-details.jsonl"), recipeDetails);
+        JsonFiles.writeJsonLines(output.resolve("unloaded-recipe-resources.jsonl"), unloadedRecipeResources);
         JsonFiles.writeJsonLines(output.resolve("item-tags.jsonl"), itemTags);
         JsonFiles.writeJsonLines(output.resolve("block-tags.jsonl"), blockTags);
         JsonFiles.writeJsonLines(output.resolve("registry-summaries.jsonl"), registryInventory.summaries());
@@ -173,6 +181,8 @@ final class RuntimeSnapshotWriter {
                 items,
                 blocks,
                 recipes,
+                recipeDetails,
+                unloadedRecipeResources,
                 itemTags,
                 blockTags,
                 registryInventory,
@@ -333,6 +343,19 @@ final class RuntimeSnapshotWriter {
         return rows;
     }
 
+    private List<Map<String, ?>> collectRecipeDetails(List<Map<String, ?>> recipes) {
+        RecipeDetailCollector collector = new RecipeDetailCollector(server);
+        List<Map<String, ?>> rows = new ArrayList<>();
+        for (Map<String, ?> header : recipes) {
+            ResourceLocation id = ResourceLocation.parse((String) header.get("id"));
+            server.getRecipeManager().byKey(id).ifPresent(holder -> rows.add(collector.collect(holder, header)));
+        }
+        if (rows.size() != recipes.size()) {
+            throw new IllegalStateException("effective recipe detail count differs from header count");
+        }
+        return rows;
+    }
+
     private Map<String, Object> recipeRow(RecipeHolder<?> holder) {
         Map<String, Object> row = new LinkedHashMap<>();
         var recipe = holder.value();
@@ -487,6 +510,8 @@ final class RuntimeSnapshotWriter {
             List<Map<String, ?>> items,
             List<Map<String, ?>> blocks,
             List<Map<String, ?>> recipes,
+            List<Map<String, ?>> recipeDetails,
+            List<Map<String, ?>> unloadedRecipeResources,
             List<Map<String, ?>> itemTags,
             List<Map<String, ?>> blockTags,
             RegistryInventory registryInventory,
@@ -505,6 +530,8 @@ final class RuntimeSnapshotWriter {
         row.put("scope", settings.scope());
         row.put("pack_wide_registry_capture", settings.scope().equals("pack"));
         row.put("generic_registry_identity_capture", true);
+        row.put("recipe_detail_format", "ch4os-recipe-detail-v1");
+        row.put("recipe_resource_json_exported", true);
         row.put("sample_ids", SAMPLE_IDS.stream().sorted().toList());
         row.put("dedicated_server", true);
         row.put("connected_players", server.getPlayerList().getPlayerCount());
@@ -518,6 +545,8 @@ final class RuntimeSnapshotWriter {
         counts.put("items", items.size());
         counts.put("blocks", blocks.size());
         counts.put("recipes", recipes.size());
+        counts.put("recipe_details", recipeDetails.size());
+        counts.put("unloaded_recipe_resources", unloadedRecipeResources.size());
         counts.put("item_tag_memberships", itemTags.size());
         counts.put("block_tag_memberships", blockTags.size());
         counts.put("registry_summaries", registryInventory.summaries().size());

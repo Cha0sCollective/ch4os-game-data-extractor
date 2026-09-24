@@ -8,11 +8,14 @@ built on this verified baseline.
 
 ## Current capabilities
 
-The `pack` capture inventories loaded mods, items, blocks, effective recipe
-headers, resolved tags, registry identities, and metadata about installed mod
+The `pack` capture inventories loaded mods, items, blocks, effective recipes,
+resolved tags, registry identities, and metadata about installed mod
 artifacts. Create stress and configuration introspection remains available.
-The current archive contract is `create-handbook-runtime-export-v1`; detailed
-recipe ingredients and additional output semantics are future v2 work.
+The archive keeps the `create-handbook-runtime-export-v1` manifest and original
+recipe headers. Additive `recipe-details.jsonl` rows include item and fluid
+inputs and outputs, layouts, process facts, source JSON, and explicit coverage
+statuses. See [recipe detail format](docs/recipe-details.md).
+`recipe_lookup.py` answers which captured recipes make or use an item.
 
 This stage retains the original mod ID, settings, runner names, and output
 format so existing captures and handbook importers remain compatible. The
