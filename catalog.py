@@ -102,7 +102,7 @@ class Catalog:
             if self._has_table(db, "adapter_relations"):
                 for relation in db.execute(
                     "SELECT * FROM adapter_relations WHERE adapter_id=? AND "
-                    "(subject_id=? OR object_id=?) ORDER BY predicate, subject_id, object_id LIMIT 250",
+                    "(subject_id=? OR object_id=?) ORDER BY predicate, subject_id, object_id",
                     (adapter, entry_id, entry_id)):
                     link = dict(relation)
                     for field in ("attributes_json", "conditions_json"):
@@ -242,6 +242,18 @@ class Catalog:
                 "FROM recipe_terms WHERE recipe_id=? ORDER BY id", (recipe_id,))]
             for term in result["terms"]:
                 term["definition"] = json.loads(term.pop("definition_json")) if term["definition_json"] else None
+            result["cross_mod_relations"] = []
+            if self._has_table(db, "adapter_relations"):
+                for link in db.execute(
+                    "SELECT adapter_id, predicate, object_kind, object_id, attributes_json, conditions_json "
+                    "FROM adapter_relations WHERE subject_kind='recipe' AND subject_id=? "
+                    "AND predicate IN ('can_run_as', 'converted_to', 'generated_by') "
+                    "ORDER BY adapter_id, predicate, object_id", (recipe_id,)):
+                    relation = dict(link)
+                    for field in ("attributes_json", "conditions_json"):
+                        value = relation.pop(field)
+                        relation[field.removesuffix("_json")] = json.loads(value) if value else None
+                    result["cross_mod_relations"].append(relation)
             return result
 
     def coverage(self) -> dict:

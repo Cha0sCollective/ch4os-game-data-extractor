@@ -13,7 +13,9 @@ failure cannot remove an item or recipe. The current bundled adapters are:
 | Electro Energetics | Loaded wire and simulated-device registries; effective server config | Wire resistance and insulation ratings, device-to-block links, electrical settings |
 | Petrochem | Accepted loaded custom recipes and effective config | Pumpjack, distilling, electrolyzing, engine fuel and turbine fuel specifications; configured stress values |
 | Create Diesel Generators | Loaded fuel-type registry, accepted custom recipes, effective config | Engine fuel performance by size, accepted fluids, distillation and other processes |
-| CC peripherals | `LuaFunction` annotations in installed integration classes | Lua-visible method names and Java signatures for Propulsion, Electro, Diesel Generators, Pinout, and Power Grid; Power Grid's declared block capability links to its item entries |
+| CC peripherals | NeoForge's loaded block-capability registration plus `LuaFunction` annotations in installed integration classes | A registration fact for each item-backed CC block; method APIs linked only where the installed provider class is mapped to a registered block |
+| Create: Central Kitchen | Effective runtime settings, accepted Farmer's Delight recipes, and Create's automation predicate | Cutting-board recipes eligible for saw or deployer conversion, with source-recipe links |
+| Create Slice & Dice | Accepted generated and source recipes in the loaded recipe manager | Links from accepted cutting/cooking recipes to their accepted Farmer's Delight sources |
 
 Deep Seas' hull values are ratings **when a block is used as a submarine hull**.
 Its API applies the installed pack's runtime multipliers. A submarine's actual
@@ -75,14 +77,23 @@ their IDs; a rejected JSON resource cannot appear as an active process.
 
 Electro Energetics' `maxInsulationVoltage` is an insulation breakdown rating,
 not a universal grid limit. Empty material results on a Petrochem fuel recipe
-describe a fuel specification, not a missing item output. The CC catalog reads
-installed Lua method annotations but does not place blocks or computers, so it
-does not claim that each peripheral can attach in every world state.
-For Power Grid, its installed `CCBridge.registerCapabilities` maps seven block
-entities to CC peripherals when CC is loaded. These item records gain a
-`integration.computercraft.peripheral_available` fact and a relation to the
-peripheral API. The Voltage Gauge's Lua methods include `voltage()`,
+describe a fuel specification, not a missing item output. The CC adapter
+observes NeoForge's actual `RegisterCapabilitiesEvent` and records
+`integration.computercraft.peripheral_registered` only for blocks with a
+registered CC provider in the loaded server. A provider can still return no
+peripheral for a particular block state, side, or world situation. Known Lua
+method APIs are linked only when their installed class maps to one of those
+registered blocks. The Voltage Gauge's mapped methods include `voltage()`,
 `getValue()`, `maxRange()`, and `rangePercentage()`.
+
+Central Kitchen's cutting-board conversions are runtime machine behavior, so
+they do not appear as ordinary accepted recipe IDs. The adapter records the
+effective saw/deployer toggles and links each eligible accepted source recipe
+to its runtime conversion. Slice & Dice's generated cutting and cooking
+recipes are already accepted recipe IDs; its adapter links each accepted pair
+instead of inventing a second copy of the recipe. World-specific shop prices,
+controller graphs, and conditional peripheral attachment are outside this
+static server capture.
 
 Adapters may declare several required mod IDs and optional class probes. The
 runner skips an absent integration cleanly, records the installed versions of

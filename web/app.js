@@ -302,8 +302,11 @@ function itemDetail(item) {
   for (const property of item.properties) properties.append(propertyRow(property));
   root.append(section(`Mechanics & properties · ${count(item.properties.length)}`,
     item.properties.length ? properties : node("p", "detail-subtitle", "No item-specific mechanic facts were collected.")));
-  if (item.cc_peripherals?.length) {
+  const ccRegistered = item.properties.some(property =>
+    property.property_key === "integration.computercraft.peripheral_registered" && property.value === true);
+  if (ccRegistered || item.cc_peripherals?.length) {
     const peripheralList = node("div", "line-list");
+    if (ccRegistered) peripheralList.append(row("Registration", "CC peripheral capability registered for the placed block"));
     for (const peripheral of item.cc_peripherals) {
       const attrs = peripheral.attributes || {};
       const methods = [...new Set((attrs.lua_methods || []).flatMap(method => method.lua_names || [method.java_name]))];
@@ -314,7 +317,7 @@ function itemDetail(item) {
         row("Lua methods", methods.length ? methods.join(", ") : "No annotated methods collected"),
         row("Attachment", peripheral.link_conditions?.attachment || "Requires a placed block and computer"));
     }
-    root.append(section(`ComputerCraft peripheral · ${count(item.cc_peripherals.length)}`, peripheralList));
+    root.append(section("ComputerCraft integration", peripheralList));
   }
   return root;
 }
@@ -348,6 +351,18 @@ function recipeDetail(recipe) {
     const terms = recipe.terms.filter(term => roles.includes(term.role));
     if (terms.length || title !== "Intermediate outputs") root.append(section(`${title} · ${count(terms.length)}`,
       terms.length ? append(node("div", "line-list"), ...terms.map(termLine)) : node("p", "detail-subtitle", "No normalized facts exposed.")));
+  }
+  if (recipe.cross_mod_relations?.length) {
+    const links = node("div", "line-list");
+    for (const relation of recipe.cross_mod_relations) {
+      const target = node("button", "subtle-button", `${relation.predicate.replaceAll("_", " ")} · ${relation.object_id} →`);
+      target.type = "button";
+      target.addEventListener("click", () => jump(relation.object_kind === "recipe" ? "recipes" : "adapter-definitions", relation.object_id));
+      links.append(target);
+      if (relation.attributes?.target_recipe_type) links.append(row("Runs as", relation.attributes.target_recipe_type));
+      if (relation.attributes?.source_recipe_id) links.append(row("Source recipe", relation.attributes.source_recipe_id));
+    }
+    root.append(section(`Cross-mod processes · ${count(recipe.cross_mod_relations.length)}`, links));
   }
   if (recipe.detail) {
     const raw = node("div");

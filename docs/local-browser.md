@@ -22,13 +22,15 @@ whose registry namespace has no matching loaded mod. The **Items** view
 searches loaded item names and IDs and filters by mod. An
 item page shows its basic facts, default component values, associated block,
 state properties, block-entity types, item and block tags, mechanic properties,
-and recipes that make or use it. Where an adapter can link a registered CC
-peripheral to the item, its Lua methods appear on the item page. Uses include
-captured item-tag membership.
+and recipes that make or use it. A block's registered CC capability appears
+on its item page; mapped Lua methods appear where the installed provider class
+is known. Registration does not guarantee availability in every world state.
+Uses include captured item-tag membership.
 The **Recipes** view searches recipe IDs and known result items and filters by
 namespace and recipe type. It shows normalized inputs, outputs, intermediate
 steps, collection statuses, active resource pack, and expandable raw detail
-JSON.
+JSON. Accepted cross-mod recipe links and eligible runtime conversions appear
+on the source recipe page.
 The **Gameplay data** view browses structured adapter definitions by adapter:
 fuel tables, electrical ratings, specialized processes, and CC peripheral APIs.
 Each detail shows relationships, evidence conditions, and source provenance.

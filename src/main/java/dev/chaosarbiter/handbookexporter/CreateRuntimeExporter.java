@@ -9,6 +9,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.slf4j.Logger;
 
@@ -20,6 +21,8 @@ public final class CreateRuntimeExporter {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public CreateRuntimeExporter(IEventBus modEventBus, ModContainer modContainer) {
+        modEventBus.addListener((RegisterCapabilitiesEvent event) ->
+                ComputerCraftPeripheralAdapter.rememberCapabilities(event));
         NeoForge.EVENT_BUS.addListener(this::onServerStarted);
     }
 

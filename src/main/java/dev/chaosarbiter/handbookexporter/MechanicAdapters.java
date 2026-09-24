@@ -29,6 +29,8 @@ final class MechanicAdapters {
                 new ElectroEnergeticsMechanicAdapter(),
                 new PetrochemMechanicAdapter(),
                 new DieselGeneratorsMechanicAdapter(),
+                new CentralKitchenIntegrationAdapter(),
+                new SliceAndDiceIntegrationAdapter(),
                 new ComputerCraftPeripheralAdapter()
         ));
         List<Map<String, ?>> mechanics = new ArrayList<>();

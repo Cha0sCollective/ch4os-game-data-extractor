@@ -20,6 +20,25 @@ from test_game_data_db import capture
 
 
 class LocalAppTests(unittest.TestCase):
+    def test_recipe_exposes_verified_cross_mod_relation(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, database = root / "capture.zip", root / "source.sqlite"
+            capture(source, adapter_rows=True)
+            import_capture(source, database)
+            with closing(sqlite3.connect(database)) as db:
+                db.execute(
+                    "INSERT INTO adapter_relations (adapter_id, subject_kind, subject_id, predicate, "
+                    "object_kind, object_id, status, attributes_json, source_record_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    ("sliceanddice", "recipe", "example:smelt", "converted_to", "recipe",
+                     "sliceanddice:cutting/example/smelt", "captured_directly",
+                     json.dumps({"target_recipe_type": "sliceanddice:cutting"}), "{}"))
+                db.commit()
+            relation = Catalog(database).recipe("example:smelt")["cross_mod_relations"][0]
+            self.assertEqual(relation["object_id"], "sliceanddice:cutting/example/smelt")
+            self.assertEqual(relation["attributes"]["target_recipe_type"], "sliceanddice:cutting")
+
     def test_item_exposes_linked_cc_peripheral_methods(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)
