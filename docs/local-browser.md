@@ -22,7 +22,9 @@ whose registry namespace has no matching loaded mod. The **Items** view
 searches loaded item names and IDs and filters by mod. An
 item page shows its basic facts, default component values, associated block,
 state properties, block-entity types, item and block tags, mechanic properties,
-and recipes that make or use it. Uses include captured item-tag membership.
+and recipes that make or use it. Where an adapter can link a registered CC
+peripheral to the item, its Lua methods appear on the item page. Uses include
+captured item-tag membership.
 The **Recipes** view searches recipe IDs and known result items and filters by
 namespace and recipe type. It shows normalized inputs, outputs, intermediate
 steps, collection statuses, active resource pack, and expandable raw detail

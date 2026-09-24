@@ -13,7 +13,7 @@ failure cannot remove an item or recipe. The current bundled adapters are:
 | Electro Energetics | Loaded wire and simulated-device registries; effective server config | Wire resistance and insulation ratings, device-to-block links, electrical settings |
 | Petrochem | Accepted loaded custom recipes and effective config | Pumpjack, distilling, electrolyzing, engine fuel and turbine fuel specifications; configured stress values |
 | Create Diesel Generators | Loaded fuel-type registry, accepted custom recipes, effective config | Engine fuel performance by size, accepted fluids, distillation and other processes |
-| CC peripherals | `LuaFunction` annotations in installed integration classes | Lua-visible method names and Java signatures for Propulsion, Electro, Diesel Generators, and Pinout |
+| CC peripherals | `LuaFunction` annotations in installed integration classes | Lua-visible method names and Java signatures for Propulsion, Electro, Diesel Generators, Pinout, and Power Grid; Power Grid's declared block capability links to its item entries |
 
 Deep Seas' hull values are ratings **when a block is used as a submarine hull**.
 Its API applies the installed pack's runtime multipliers. A submarine's actual
@@ -78,6 +78,11 @@ not a universal grid limit. Empty material results on a Petrochem fuel recipe
 describe a fuel specification, not a missing item output. The CC catalog reads
 installed Lua method annotations but does not place blocks or computers, so it
 does not claim that each peripheral can attach in every world state.
+For Power Grid, its installed `CCBridge.registerCapabilities` maps seven block
+entities to CC peripherals when CC is loaded. These item records gain a
+`integration.computercraft.peripheral_available` fact and a relation to the
+peripheral API. The Voltage Gauge's Lua methods include `voltage()`,
+`getValue()`, `maxRange()`, and `rangePercentage()`.
 
 Adapters may declare several required mod IDs and optional class probes. The
 runner skips an absent integration cleanly, records the installed versions of

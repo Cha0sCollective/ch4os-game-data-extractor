@@ -14,11 +14,37 @@ from http.server import ThreadingHTTPServer
 from unittest.mock import patch
 
 from game_data_db import import_capture
+from catalog import Catalog
 from local_app import AppState, handler_for
 from test_game_data_db import capture
 
 
 class LocalAppTests(unittest.TestCase):
+    def test_item_exposes_linked_cc_peripheral_methods(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, database = root / "capture.zip", root / "source.sqlite"
+            capture(source, adapter_rows=True)
+            import_capture(source, database)
+            with closing(sqlite3.connect(database)) as db:
+                db.execute(
+                    "INSERT INTO adapter_definitions (adapter_id, kind, id, status, attributes_json, source_record_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    ("computercraft_peripherals", "cc_peripheral_api", "example:OrePeripheral",
+                     "captured_directly", json.dumps({"provider_mod": "example", "provider_version": "2.0",
+                                                      "lua_methods": [{"java_name": "voltage", "lua_names": ["voltage"]}]}), "{}"))
+                db.execute(
+                    "INSERT INTO adapter_relations (adapter_id, subject_kind, subject_id, predicate, "
+                    "object_kind, object_id, status, conditions_json, source_record_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    ("computercraft_peripherals", "item", "example:ore", "exposes_cc_peripheral",
+                     "cc_peripheral_api", "example:OrePeripheral", "captured_directly",
+                     json.dumps({"attachment": "placed block"}), "{}"))
+                db.commit()
+            peripheral = Catalog(database).item("example:ore")["cc_peripherals"][0]
+            self.assertEqual(peripheral["attributes"]["lua_methods"][0]["lua_names"], ["voltage"])
+            self.assertEqual(peripheral["link_conditions"]["attachment"], "placed block")
+
     def test_capture_job_passes_pack_source_to_existing_runner_and_imports_result(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)

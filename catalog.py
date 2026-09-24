@@ -187,6 +187,19 @@ class Catalog:
                 prop["source_record"] = json.loads(evidence) if evidence is not None else None
             for block_property in result["block_state_properties"]:
                 block_property["allowed_values"] = json.loads(block_property.pop("allowed_values_json"))
+            result["cc_peripherals"] = []
+            if self._has_table(db, "adapter_relations") and self._has_table(db, "adapter_definitions"):
+                for link in db.execute(
+                    "SELECT d.adapter_id, d.kind, d.id, d.attributes_json, d.conditions_json, "
+                    "r.conditions_json AS link_conditions_json FROM adapter_relations r "
+                    "JOIN adapter_definitions d ON d.adapter_id=r.adapter_id AND d.kind=r.object_kind "
+                    "AND d.id=r.object_id WHERE r.subject_kind='item' AND r.subject_id=? "
+                    "AND r.predicate='exposes_cc_peripheral' ORDER BY d.id", (item_id,)):
+                    peripheral = dict(link)
+                    for field in ("attributes_json", "conditions_json", "link_conditions_json"):
+                        value = peripheral.pop(field)
+                        peripheral[field.removesuffix("_json")] = json.loads(value) if value else None
+                    result["cc_peripherals"].append(peripheral)
             return result
 
     def _recipe_where(self, q: str, recipe_type: str, mod: str, coverage: str) -> tuple[str, list]:

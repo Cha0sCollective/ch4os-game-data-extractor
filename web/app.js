@@ -302,6 +302,20 @@ function itemDetail(item) {
   for (const property of item.properties) properties.append(propertyRow(property));
   root.append(section(`Mechanics & properties · ${count(item.properties.length)}`,
     item.properties.length ? properties : node("p", "detail-subtitle", "No item-specific mechanic facts were collected.")));
+  if (item.cc_peripherals?.length) {
+    const peripheralList = node("div", "line-list");
+    for (const peripheral of item.cc_peripherals) {
+      const attrs = peripheral.attributes || {};
+      const methods = [...new Set((attrs.lua_methods || []).flatMap(method => method.lua_names || [method.java_name]))];
+      const link = node("button", "subtle-button", `${peripheral.id} →`);
+      link.type = "button";
+      link.addEventListener("click", () => jump("adapter-definitions", peripheral.id));
+      peripheralList.append(link, row("Provider", `${attrs.provider_mod || "Unknown"} ${attrs.provider_version || ""}`),
+        row("Lua methods", methods.length ? methods.join(", ") : "No annotated methods collected"),
+        row("Attachment", peripheral.link_conditions?.attachment || "Requires a placed block and computer"));
+    }
+    root.append(section(`ComputerCraft peripheral · ${count(item.cc_peripherals.length)}`, peripheralList));
+  }
   return root;
 }
 function termLine(term) {
