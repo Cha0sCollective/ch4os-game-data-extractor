@@ -15,6 +15,8 @@ import zipfile
 
 SCHEMA = Path(__file__).with_name("schema.sql")
 REQUIRED = {"provenance.json", "mods.jsonl", "items.jsonl", "blocks.jsonl", "recipes.jsonl"}
+PROPERTY_STATUSES = {"captured_directly", "derived", "unavailable", "unsupported",
+                     "not_applicable", "failed_to_collect"}
 
 
 def compact(value: object) -> str:
@@ -219,15 +221,34 @@ def populate(db: sqlite3.Connection, archive: zipfile.ZipFile, manifest: dict, p
 
     for mechanic in rows(archive, "mechanics.jsonl"):
         entry_id = mechanic["entry_id"]
-        kind = "block" if db.execute("SELECT 1 FROM blocks WHERE id=?", (entry_id,)).fetchone() else "item"
-        if kind == "item" and not db.execute("SELECT 1 FROM items WHERE id=?", (entry_id,)).fetchone():
-            kind = "registry_entry"
-        registered = mechanic.get("registered_value")
-        status = "captured_directly" if registered is not False and "value_number" in mechanic else "unavailable"
-        value = mechanic.get("value_number") if status == "captured_directly" else None
+        kind = mechanic.get("entity_kind")
+        if kind is None:
+            kind = "block" if db.execute("SELECT 1 FROM blocks WHERE id=?", (entry_id,)).fetchone() else "item"
+            if kind == "item" and not db.execute("SELECT 1 FROM items WHERE id=?", (entry_id,)).fetchone():
+                kind = "registry_entry"
+        if kind not in {"item", "block", "registry_entry"}:
+            raise ValueError(f"invalid mechanic entity kind for {entry_id}: {kind}")
+        if kind in {"item", "block"} and not db.execute(
+                f"SELECT 1 FROM {'items' if kind == 'item' else 'blocks'} WHERE id=?", (entry_id,)).fetchone():
+            raise ValueError(f"mechanic references missing {kind}: {entry_id}")
+        if "status" in mechanic:
+            status = mechanic["status"]
+            value = mechanic.get("value")
+            key = mechanic["property_key"]
+        else:
+            registered = mechanic.get("registered_value")
+            status = "captured_directly" if registered is not False and mechanic.get("value_number") is not None else "unavailable"
+            value = mechanic.get("value_number") if status == "captured_directly" else None
+            key = f"{mechanic.get('subsystem', 'unknown')}.{mechanic['fact_key']}"
+        if status not in PROPERTY_STATUSES:
+            raise ValueError(f"invalid mechanic status for {entry_id}: {status}")
+        if status not in {"captured_directly", "derived"}:
+            value = None
+        elif value is None or not isinstance(value, (str, int, float, bool)):
+            raise ValueError(f"captured mechanic has no scalar value: {entry_id} {key}")
         db.execute("INSERT INTO properties (entity_kind, entity_id, property_key, status, value_json, unit, conditions_json, source, source_record_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                   (kind, entry_id, f"{mechanic.get('subsystem', 'unknown')}.{mechanic['fact_key']}",
-                    status, nullable_json(value), mechanic.get("unit"), None,
+                   (kind, entry_id, key,
+                    status, nullable_json(value), mechanic.get("unit"), nullable_json(mechanic.get("conditions")),
                     mechanic.get("source_api"), compact(mechanic)))
     db.executemany("INSERT INTO config_values (mod_id, config_scope, config_path, field_name, effective_value_json, unit_hint, evidence_status, source_api) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                    ((r.get("mod_id"), r.get("config_scope"), r.get("config_path"),
@@ -268,7 +289,8 @@ def item_report(db: sqlite3.Connection, item_id: str) -> dict:
     result["block_entity_types"] = [r[0] for r in db.execute(
         "SELECT type_id FROM block_entity_types WHERE block_id=? ORDER BY type_id", (item["block_id"],))]
     result["properties"] = [dict(r) for r in db.execute(
-        "SELECT entity_kind, property_key, status, value_json, unit, source FROM properties "
+        "SELECT entity_kind, property_key, status, value_json, unit, conditions_json, source, source_record_json "
+        "FROM properties "
         "WHERE (entity_kind='item' AND entity_id=?) OR (entity_kind='block' AND entity_id=?) "
         "ORDER BY property_key", (item_id, item["block_id"]))]
     result["makes"] = [r[0] for r in db.execute(

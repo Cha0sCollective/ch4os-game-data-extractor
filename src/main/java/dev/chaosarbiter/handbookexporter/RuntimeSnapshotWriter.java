@@ -110,19 +110,8 @@ final class RuntimeSnapshotWriter {
         progressCount("registry entries", registryInventory.entries().size());
         progressCount("registry tag memberships", registryInventory.tags().size());
 
-        progress(7, "Reading effective Create stress registries and loaded server/common settings.");
-        CreateRuntimeIntrospection.IntrospectionResult introspection =
-                ModList.get().isLoaded("create")
-                        ? new CreateRuntimeIntrospection(inScope).collect()
-                        : new CreateRuntimeIntrospection.IntrospectionResult(
-                                List.of(),
-                                List.of(),
-                                List.of(Map.of(
-                                        "subsystem", "create_introspection",
-                                        "status", "not_applicable",
-                                        "row_count", 0
-                                ))
-                        );
+        progress(7, "Reading effective mechanic facts through installed-mod adapters.");
+        MechanicAdapter.Result introspection = MechanicAdapters.collect(server, inScope);
         progressCount("effective mechanics facts", introspection.mechanics().size());
         progressCount("effective server/common configuration values", introspection.configs().size());
 

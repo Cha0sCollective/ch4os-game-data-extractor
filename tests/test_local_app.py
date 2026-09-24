@@ -80,6 +80,10 @@ class LocalAppTests(unittest.TestCase):
                 self.assertEqual(get("/api/items?q=ore")["items"][0]["id"], "example:ore")
                 self.assertEqual(get("/api/items/example%3Aore")["uses"], ["example:smelt"])
                 self.assertEqual(get("/api/items/example%3Aore")["makes"], [])
+                voltage = next(prop for prop in get("/api/items/example%3Aore")["properties"]
+                               if prop["property_key"] == "electrical.meter.maximum_voltage")
+                self.assertEqual(voltage["value"], 500.0)
+                self.assertEqual(voltage["conditions"], {"meaning": "measurement range"})
                 self.assertEqual(get("/api/recipes?type=minecraft%3Asmelting")["total"], 1)
                 self.assertEqual(get("/api/recipes/example%3Asmelt")["terms"][0]["kind"], "item_tag")
                 self.assertEqual(get("/api/coverage")["item_components"][0]["status"], "captured")

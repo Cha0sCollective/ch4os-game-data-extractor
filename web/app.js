@@ -190,6 +190,15 @@ async function selectRecord(kind, id) {
 function section(title, content) { return append(node("section", "detail-section"), node("h3", "", title), content); }
 function fact(label, value) { return append(node("div", "fact"), node("small", "", label), node("strong", "", safeValue(value))); }
 function row(label, value) { return append(node("div", "line-item"), node("strong", "", `${label}: `), node("span", "", safeValue(value))); }
+function propertyRow(property) {
+  const value = property.status === "captured_directly" || property.status === "derived" ?
+    `${safeValue(property.value)}${property.unit ? ` ${property.unit}` : ""}` : property.status.replaceAll("_", " ");
+  const line = append(node("div", "line-item"), node("strong", "", `${property.property_key}: `), node("span", "", value));
+  const context = property.conditions ? Object.entries(property.conditions).map(([key, entry]) => `${key.replaceAll("_", " ")}: ${safeValue(entry)}`) : [];
+  if (context.length) line.append(node("div", "property-meta", context.join(" · ")));
+  if (property.source) line.append(node("div", "property-meta", `Source: ${property.source}`));
+  return line;
+}
 function linkList(ids, kind) {
   const list = node("div", "link-list");
   for (const id of ids) {
@@ -231,9 +240,7 @@ function itemDetail(item) {
     component.status === "captured" ? component.value : component.status));
   root.append(section(`Default components · ${count(item.components.length)}`, components));
   const properties = node("div", "line-list");
-  for (const property of item.properties) properties.append(row(property.property_key,
-    property.status === "captured_directly" || property.status === "derived" ?
-      `${safeValue(property.value)}${property.unit ? ` ${property.unit}` : ""}` : property.status));
+  for (const property of item.properties) properties.append(propertyRow(property));
   root.append(section(`Mechanics & properties · ${count(item.properties.length)}`,
     item.properties.length ? properties : node("p", "detail-subtitle", "No item-specific mechanic facts were collected.")));
   return root;

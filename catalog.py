@@ -127,6 +127,10 @@ class Catalog:
             for prop in result["properties"]:
                 value = prop.pop("value_json")
                 prop["value"] = json.loads(value) if value is not None else None
+                conditions = prop.pop("conditions_json")
+                prop["conditions"] = json.loads(conditions) if conditions is not None else None
+                evidence = prop.pop("source_record_json")
+                prop["source_record"] = json.loads(evidence) if evidence is not None else None
             for block_property in result["block_state_properties"]:
                 block_property["allowed_values"] = json.loads(block_property.pop("allowed_values_json"))
             return result

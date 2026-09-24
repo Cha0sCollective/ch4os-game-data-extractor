@@ -10,7 +10,9 @@ item and recipe database and explored in a loopback-only browser.
 
 The `pack` capture inventories loaded mods, items, blocks, effective recipes,
 resolved tags, registry identities, and metadata about installed mod
-artifacts. Create stress and configuration introspection remains available.
+artifacts. Optional [mechanic adapters](docs/mechanic-adapters.md) now capture
+Create stress, Create Deep Seas hull ratings, and Power Grid wire and
+multimeter limits with runtime sources and conditions.
 The archive keeps the `create-handbook-runtime-export-v1` manifest and original
 recipe headers. Additive `recipe-details.jsonl` rows include item and fluid
 inputs and outputs, layouts, process facts, source JSON, and explicit coverage

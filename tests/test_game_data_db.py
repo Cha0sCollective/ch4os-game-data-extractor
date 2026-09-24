@@ -36,6 +36,14 @@ def capture(path, *, details=True, corrupt=False):
              "value_number": 0, "registered_value": False, "source_api": "example.api"},
             {"entry_id": "example:ingot_block", "subsystem": "kinetics", "fact_key": "generated_rpm",
              "value_number": 32, "registered_value": True, "source_api": "example.api"},
+            {"format": "ch4os-mechanic-v2", "adapter_id": "deep_seas", "entity_kind": "block",
+             "entry_id": "example:ingot_block", "property_key": "hull.max_water_depth",
+             "status": "captured_directly", "value": 180, "unit": "blocks",
+             "conditions": {"usage": "submarine hull block"}, "source_api": "HullStrengthConfig.getFor"},
+            {"format": "ch4os-mechanic-v2", "adapter_id": "powergrid", "entity_kind": "item",
+             "entry_id": "example:ore", "property_key": "electrical.meter.maximum_voltage",
+             "status": "captured_directly", "value": 500.0, "unit": "V",
+             "conditions": {"meaning": "measurement range"}, "source_api": "Equipment.get"},
         ]),
     }
     if details:
@@ -86,6 +94,12 @@ class GameDataDbTests(unittest.TestCase):
                 self.assertEqual(properties["kinetics.stress_impact"]["status"], "unavailable")
                 self.assertIsNone(properties["kinetics.stress_impact"]["value_json"])
                 self.assertEqual(properties["kinetics.generated_rpm"]["value_json"], "32")
+                self.assertEqual(properties["hull.max_water_depth"]["value_json"], "180")
+                self.assertEqual(json.loads(properties["hull.max_water_depth"]["conditions_json"]),
+                                 {"usage": "submarine hull block"})
+                ore_properties = {row["property_key"]: row for row in ore["properties"]}
+                self.assertEqual(ore_properties["electrical.meter.maximum_voltage"]["value_json"], "500.0")
+                self.assertEqual(ore_properties["electrical.meter.maximum_voltage"]["source"], "Equipment.get")
 
     def test_legacy_capture_keeps_unknown_detail_explicit(self):
         with TemporaryDirectory() as folder:
