@@ -1,12 +1,10 @@
 package dev.chaosarbiter.handbookexporter;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.MinecraftServer;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
@@ -19,10 +17,6 @@ import java.util.Map;
 @Mod(CreateRuntimeExporter.MOD_ID)
 public final class CreateRuntimeExporter {
     static final String MOD_ID = "create_runtime_exporter";
-    private static final String EXPECTED_MINECRAFT = "1.21.1";
-    private static final String EXPECTED_NEOFORGE = "21.1.233";
-    private static final String EXPECTED_CREATE = "6.0.10";
-    private static final String EXPECTED_PACK = "v2.1";
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public CreateRuntimeExporter(IEventBus modEventBus, ModContainer modContainer) {
@@ -39,13 +33,10 @@ public final class CreateRuntimeExporter {
         try {
             LOGGER.info("[HANDBOOK EXPORT] Starting guarded runtime export.");
             LOGGER.info("[HANDBOOK EXPORT] Verifying dedicated-server state and exact runtime versions.");
-            verifyEnvironment(server);
+            CompatibilityProfile profile = verifyEnvironment(server);
             LOGGER.info(
-                    "[HANDBOOK EXPORT] Environment verified: Minecraft {}, NeoForge {}, Create {}, pack {}.",
-                    EXPECTED_MINECRAFT,
-                    EXPECTED_NEOFORGE,
-                    EXPECTED_CREATE,
-                    EXPECTED_PACK
+                    "[HANDBOOK EXPORT] Environment verified for profile {}: Minecraft {}, NeoForge {}.",
+                    profile.id(), profile.minecraftVersion(), profile.neoForgeVersion()
             );
             ExporterSettings settings = ExporterSettings.load(FMLPaths.GAMEDIR.get());
             LOGGER.info(
@@ -64,14 +55,14 @@ public final class CreateRuntimeExporter {
                     exception
             );
         } finally {
-            if (ExporterSettings.autoStop()) {
+            if (ExporterSettings.autoStop(FMLPaths.GAMEDIR.get())) {
                 LOGGER.info("[HANDBOOK EXPORT] Requesting clean disposable-server shutdown.");
                 server.halt(false);
             }
         }
     }
 
-    private void verifyEnvironment(MinecraftServer server) {
+    private CompatibilityProfile verifyEnvironment(MinecraftServer server) {
         if (FMLEnvironment.dist != Dist.DEDICATED_SERVER) {
             throw new IllegalStateException("exporter only runs in a disposable dedicated-server process");
         }
@@ -79,27 +70,8 @@ public final class CreateRuntimeExporter {
             throw new IllegalStateException("exporter refuses to run while any player is connected");
         }
 
-        requireVersion("Minecraft", SharedConstants.getCurrentVersion().getName(), EXPECTED_MINECRAFT);
-        requireVersion("NeoForge", modVersion("neoforge"), EXPECTED_NEOFORGE);
-        requireVersion("Create", modVersion("create"), EXPECTED_CREATE);
-        requireVersion(
-                "pack declaration",
-                ExporterSettings.declaredPackVersion(),
-                EXPECTED_PACK
-        );
-    }
-
-    private String modVersion(String modId) {
-        return ModList.get().getModContainerById(modId)
-                .map(container -> container.getModInfo().getVersion().toString())
-                .orElse("<missing>");
-    }
-
-    private void requireVersion(String component, String actual, String expected) {
-        if (!expected.equals(actual)) {
-            throw new IllegalStateException(
-                    component + " version mismatch: expected " + expected + ", found " + actual
-            );
-        }
+        CompatibilityProfile profile = CompatibilityProfile.selected();
+        profile.verify();
+        return profile;
     }
 }

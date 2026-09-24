@@ -24,8 +24,7 @@ import java.util.function.Supplier;
 
 /**
  * Reads Create's public runtime registries without adding Create as a compile-time
- * dependency. The exporter remains a small NeoForge-only diagnostic mod while the
- * exact Create version is still enforced before this class is called.
+ * dependency. Compatibility profiles decide whether Create is expected.
  */
 final class CreateRuntimeIntrospection {
     private static final String STRESS_CLASS =

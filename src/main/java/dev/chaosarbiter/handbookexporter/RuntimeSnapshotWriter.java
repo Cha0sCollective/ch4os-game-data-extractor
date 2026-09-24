@@ -101,7 +101,17 @@ final class RuntimeSnapshotWriter {
 
         progress(7, "Reading effective Create stress registries and loaded server/common settings.");
         CreateRuntimeIntrospection.IntrospectionResult introspection =
-                new CreateRuntimeIntrospection(inScope).collect();
+                ModList.get().isLoaded("create")
+                        ? new CreateRuntimeIntrospection(inScope).collect()
+                        : new CreateRuntimeIntrospection.IntrospectionResult(
+                                List.of(),
+                                List.of(),
+                                List.of(Map.of(
+                                        "subsystem", "create_introspection",
+                                        "status", "not_applicable",
+                                        "row_count", 0
+                                ))
+                        );
         progressCount("effective mechanics facts", introspection.mechanics().size());
         progressCount("effective server/common configuration values", introspection.configs().size());
 
@@ -486,6 +496,7 @@ final class RuntimeSnapshotWriter {
     ) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("format", "create-handbook-runtime-export-v1");
+        row.put("compatibility_profile", CompatibilityProfile.selected().id());
         row.put("generated_at_utc", Instant.now().toString());
         row.put("minecraft_version", SharedConstants.getCurrentVersion().getName());
         row.put("neoforge_version", modVersion("neoforge"));

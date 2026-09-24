@@ -399,6 +399,7 @@ Write-Status "Wrote EULA acceptance only inside the disposable server directory.
 $previousEnvironment = @{}
 $runtimeEnvironment = @{
     "HANDBOOK_EXPORT_ENABLED" = "true"
+    "HANDBOOK_EXPORT_PROFILE" = "aoca-v2.1"
     "HANDBOOK_EXPORT_CONFIRM" = "DISPOSABLE_INSTANCE"
     "HANDBOOK_EXPORT_PACK_VERSION" = $ExpectedPackVersion
     "HANDBOOK_EXPORT_SCOPE" = $Scope

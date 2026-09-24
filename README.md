@@ -16,9 +16,12 @@ recipe ingredients and additional output semantics are future v2 work.
 
 This stage retains the original mod ID, settings, runner names, and output
 format so existing captures and handbook importers remain compatible. The
-current Windows runner is pinned to the All of Create – Aeronautics v2.1 server
-pack. See [legacy exporter instructions](docs/legacy-exporter.md) for its
-guards, supported scopes, and usage.
+current Windows runner selects the pinned All of Create – Aeronautics v2.1
+profile. Direct exporter runs default to the general Minecraft 1.21.1 / NeoForge
+21.1.x profile; mods and pack version are not pinned there. The exporter still
+requires a disposable dedicated server, zero players, and explicit capture
+confirmation. See [legacy exporter instructions](docs/legacy-exporter.md) for
+the original runner and archive contract.
 
 ## Build and verify
 
@@ -39,6 +42,11 @@ The GitHub Actions workflow runs these checks and packages the original jar
 with the Windows runner. Field reports from the source repository are in
 `docs/field-reports/`; they document prior runs and do not claim a new run of
 this standalone repository.
+
+The next capture workflow will accept either a Packwiz `pack.toml` link or a
+Packwiz-based Prism import ZIP, install server-side files into a disposable
+directory, and select the correct Minecraft/NeoForge runtime automatically.
+The Prism ZIP contains installer metadata rather than the gameplay JARs.
 
 ## Origin and attribution
 

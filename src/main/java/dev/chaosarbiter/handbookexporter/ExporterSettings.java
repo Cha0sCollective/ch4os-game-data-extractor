@@ -2,6 +2,7 @@ package dev.chaosarbiter.handbookexporter;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Locale;
 
@@ -97,12 +98,21 @@ final class ExporterSettings {
         ));
     }
 
-    static boolean autoStop() {
-        return Boolean.parseBoolean(value(
+    static boolean autoStop(Path gameDirectory) {
+        boolean requested = Boolean.parseBoolean(value(
                 "handbook.export.autoStop",
                 "HANDBOOK_EXPORT_AUTOSTOP",
                 "false"
         ));
+        return requested && (
+                Files.isRegularFile(
+                        gameDirectory.resolve(".handbook-disposable-instance"),
+                        LinkOption.NOFOLLOW_LINKS
+                ) || Files.isRegularFile(
+                        gameDirectory.resolve(".ch4os-disposable-instance"),
+                        LinkOption.NOFOLLOW_LINKS
+                )
+        );
     }
 
     static String declaredPackVersion() {
@@ -111,6 +121,14 @@ final class ExporterSettings {
                 "HANDBOOK_EXPORT_PACK_VERSION",
                 ""
         );
+    }
+
+    static String profileId() {
+        return value(
+                "handbook.export.profile",
+                "HANDBOOK_EXPORT_PROFILE",
+                CompatibilityProfile.GENERIC_ID
+        ).trim();
     }
 
     private static String value(String propertyName, String environmentName, String defaultValue) {
