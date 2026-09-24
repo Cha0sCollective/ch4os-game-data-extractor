@@ -3,8 +3,8 @@
 This repository is the standalone successor to the runtime exporter in the
 [All of Create – Aeronautics handbook](https://github.com/Cha0sCollective/all-of-create-aeronautics-handbook).
 The exporter preserves the existing NeoForge 1.21.1 runtime capture and its
-Windows disposable-server runner. Captures can now be imported into a local
-SQLite item and recipe database. A browsing application is a later stage.
+Windows disposable-server runner. Captures can be imported into a local SQLite
+item and recipe database and explored in a loopback-only browser.
 
 ## Current capabilities
 
@@ -20,6 +20,8 @@ The additive `item-details.jsonl` records default item component values and
 associated block-entity types where available. `game_data_db.py` builds a
 normalized SQLite database from either current or earlier v1 capture ZIPs;
 see [database format and limitations](docs/item-database.md).
+`local_app.py` provides a mod-first directory, item and recipe browsing, coverage views, filtered
+CSV/JSON exports, and capture/import controls. See [local browser guide](docs/local-browser.md).
 
 This stage retains the original mod ID, settings, runner names, and output
 format so existing captures and handbook importers remain compatible. The
@@ -68,6 +70,18 @@ an item:
 python game_data_db.py import "C:\path\to\capture.zip" --output "C:\path\to\game-data.sqlite"
 python game_data_db.py item "C:\path\to\game-data.sqlite" minecraft:iron_ingot
 ```
+
+## Browse locally
+
+```text
+python local_app.py
+python local_app.py --database "C:\path\to\game-data.sqlite"
+```
+
+The app opens at `http://127.0.0.1:8765/`. It can import a capture ZIP from a
+file picker or local path, open an existing database, or start a new Packwiz
+server-side capture from a link or ZIP. New captures require a built exporter
+JAR, Java 21, and acceptance of the Minecraft EULA in the app.
 
 ## Build and verify
 

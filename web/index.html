@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ch4oS Game Data</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">C<span>4</span></span><div><strong>Ch4oS</strong><small>GAME DATA EXTRACTOR</small></div></div>
+      <div class="topbar-meta" id="snapshot-label">No database open</div>
+      <button class="primary-button" id="open-source">＋ Capture or import</button>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar">
+        <div class="sidebar-label">EXPLORE</div>
+        <nav class="view-nav" aria-label="Browse data">
+          <button data-view="mods" class="active"><span>▦</span> Mods <span class="nav-count" id="mod-count">—</span></button>
+          <button data-view="items"><span>◈</span> Items <span class="nav-count" id="item-count">—</span></button>
+          <button data-view="recipes"><span>⌘</span> Recipes <span class="nav-count" id="recipe-count">—</span></button>
+          <button data-view="coverage"><span>◌</span> Coverage</button>
+        </nav>
+        <div class="sidebar-divider"></div>
+        <div id="filters-box">
+        <div class="sidebar-label">FILTERS</div>
+        <label class="field-label" for="mod-filter">Mod / namespace</label>
+        <select id="mod-filter"><option value="">All mods</option></select>
+        <div id="type-filter-wrap" hidden>
+          <label class="field-label" for="type-filter">Recipe type</label>
+          <select id="type-filter"><option value="">All recipe types</option></select>
+        </div>
+        <label class="field-label" for="coverage-filter">Collection</label>
+        <select id="coverage-filter"><option value="all">All records</option><option value="incomplete">Needs attention</option></select>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-label">CURRENT DATASET</div>
+        <div class="dataset-card" id="dataset-card"><strong>No capture loaded</strong><span>Import a capture ZIP or open a database to begin.</span></div>
+        <button class="subtle-button" id="open-source-side">Change dataset →</button>
+      </aside>
+
+      <main class="content">
+        <div class="content-heading"><div><div class="eyebrow" id="view-eyebrow">MOD DIRECTORY</div><h1 id="view-title">Mods</h1><p id="view-description">Choose a loaded mod to browse its items.</p></div><div class="heading-actions" hidden><button class="outline-button" id="export-csv">Export CSV</button><button class="outline-button" id="export-json">Export JSON</button></div></div>
+        <div class="mod-context" id="mod-context" hidden><button id="back-mods">← All mods</button><span id="context-name"></span><button id="context-switch">View recipes →</button></div>
+        <div class="search-box" id="search-wrap"><span>⌕</span><input id="search" type="search" placeholder="Search item name or registry ID" autocomplete="off"><kbd>/</kbd></div>
+        <label class="mod-scope" id="mod-scope"><input type="checkbox" id="show-empty-mods"> Show mods without loaded items</label>
+        <div class="list-meta"><span id="result-count">Choose a capture to explore</span><span id="page-label"></span></div>
+        <div class="results" id="results"></div>
+        <div class="pagination" id="pagination" hidden><button class="outline-button" id="prev-page">← Previous</button><span id="pagination-label"></span><button class="outline-button" id="next-page">Next →</button></div>
+      </main>
+
+      <aside class="detail-panel" id="detail-panel"><div class="detail-placeholder"><span>◇</span><h2>Inspect the data</h2><p>Select an item or recipe to see what the server reported and what remains unknown.</p></div></aside>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="source-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-top"><div><div class="eyebrow">DATA SOURCE</div><h2 id="modal-title">Capture or import</h2></div><button class="icon-button" id="close-source" aria-label="Close">×</button></div>
+      <div class="modal-tabs"><button data-source-tab="capture" class="active">Run a pack</button><button data-source-tab="import">Import capture</button><button data-source-tab="open">Open database</button></div>
+      <section id="capture-form" class="source-form">
+        <p>Run the server side of a Packwiz pack in a new disposable NeoForge server. A capture ZIP and SQLite database will be saved locally.</p>
+        <label class="field-label" for="pack-source">Packwiz link or local ZIP path</label><input id="pack-source" type="text" placeholder="https://…/pack.toml or C:\packs\pack.zip">
+        <label class="field-label" for="pack-file">Or choose a Packwiz / Prism ZIP</label><input id="pack-file" type="file" accept=".zip,application/zip">
+        <div class="two-fields"><div><label class="field-label" for="java-path">Java 21 executable (optional)</label><input id="java-path" type="text" placeholder="Use Java on PATH"></div><div><label class="field-label" for="memory">Server memory</label><input id="memory" type="text" value="8G"></div></div>
+        <label class="checkbox-label"><input id="eula" type="checkbox"><span>I accept the <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener noreferrer">Minecraft EULA</a> for this disposable server.</span></label>
+        <button class="primary-button wide" id="start-capture">Start capture</button>
+      </section>
+      <section id="import-form" class="source-form" hidden>
+        <p>Import an existing Ch4oS capture ZIP. The original archive stays untouched.</p>
+        <label class="field-label" for="capture-file">Capture ZIP</label><input id="capture-file" type="file" accept=".zip,application/zip">
+        <div class="or-divider">OR</div>
+        <label class="field-label" for="capture-path">Local capture ZIP path</label><input id="capture-path" type="text" placeholder="C:\captures\my-pack.zip">
+        <button class="primary-button wide" id="start-import">Import capture</button>
+      </section>
+      <section id="open-form" class="source-form" hidden>
+        <p>Open a database built by this extractor. It will be read only while you browse.</p>
+        <label class="field-label" for="database-path">SQLite database path</label><input id="database-path" type="text" placeholder="C:\captures\game-data.sqlite">
+        <button class="primary-button wide" id="open-database">Open database</button>
+      </section>
+      <div id="job-box" class="job-box" hidden><div class="job-heading"><strong id="job-title">Working…</strong><span id="job-status" class="status-chip">Running</span></div><pre id="job-log"></pre></div>
+      <div class="modal-error" id="modal-error" role="alert" hidden></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>
