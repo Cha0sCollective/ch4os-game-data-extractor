@@ -16,6 +16,7 @@ failure cannot remove an item or recipe. The current bundled adapters are:
 | CC peripherals | NeoForge's loaded block-capability registration plus `LuaFunction` annotations in installed integration classes | A registration fact for each item-backed CC block; method APIs linked only where the installed provider class is mapped to a registered block |
 | Create: Central Kitchen | Effective runtime settings, accepted Farmer's Delight recipes, and Create's automation predicate | Cutting-board recipes eligible for saw or deployer conversion, with source-recipe links |
 | Create Slice & Dice | Accepted generated and source recipes in the loaded recipe manager | Links from accepted cutting/cooking recipes to their accepted Farmer's Delight sources |
+| Create Display Links | Loaded Display Source/Target registries and their block and block-entity lookup tables | Registered source types, target types, and item-backed blocks that provide or accept them |
 
 Deep Seas' hull values are ratings **when a block is used as a submarine hull**.
 Its API applies the installed pack's runtime multipliers. A submarine's actual
@@ -94,6 +95,13 @@ recipes are already accepted recipe IDs; its adapter links each accepted pair
 instead of inventing a second copy of the recipe. World-specific shop prices,
 controller graphs, and conditional peripheral attachment are outside this
 static server capture.
+
+Display Link roles come from Create's active registries, including registrations
+from installed add-ons and tag-based providers. A source role says which kind
+of data a placed block may offer; a target role says which display handler can
+receive output. Source-to-target suitability, available lines, and actual
+content can depend on placement and world state, so the adapter does not claim
+that every registered pair will work in every situation.
 
 Adapters may declare several required mod IDs and optional class probes. The
 runner skips an absent integration cleanly, records the installed versions of

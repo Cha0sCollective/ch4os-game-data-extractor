@@ -225,10 +225,19 @@ function definitionDetail(entry) {
     value && typeof value === "object" ? jsonDisclosure(key.replaceAll("_", " "), value) : row(key.replaceAll("_", " "), value));
   root.append(section("Captured values", values));
   if (entry.conditions) root.append(section("Conditions and limits", jsonDisclosure("Evidence conditions", entry.conditions)));
-  const links = node("div", "line-list");
-  for (const link of entry.relations || []) links.append(row(`${link.predicate.replaceAll("_", " ")} · ${link.subject_id}`,
-    `${link.object_kind}: ${link.object_id}`));
-  root.append(section(`Relationships · ${count((entry.relations || []).length)}`, links));
+  if (entry.adapter_id === "create_display_links") {
+    const items = [...new Set((entry.relations || [])
+      .filter(link => link.subject_kind === "item" &&
+        ["provides_display_source", "accepts_display_output"].includes(link.predicate))
+      .map(link => link.subject_id))];
+    root.append(section(`Registered item-backed blocks · ${count(items.length)}`,
+      items.length ? linkList(items, "items") : node("p", "detail-subtitle", "No item-backed block was registered for this type.")));
+  } else {
+    const links = node("div", "line-list");
+    for (const link of entry.relations || []) links.append(row(`${link.predicate.replaceAll("_", " ")} · ${link.subject_id}`,
+      `${link.object_kind}: ${link.object_id}`));
+    root.append(section(`Relationships · ${count((entry.relations || []).length)}`, links));
+  }
   root.append(section("Provenance", append(node("div", "line-list"), row("Source API", entry.source_api),
     row("Resource", entry.source_resource_id), row("Source pack", entry.source_pack_id),
     row("Installed mod versions", entry.source_record?.required_mod_versions), row("SHA-256", entry.source_sha256))));
@@ -318,6 +327,35 @@ function itemDetail(item) {
         row("Attachment", peripheral.link_conditions?.attachment || "Requires a placed block and computer"));
     }
     root.append(section("ComputerCraft integration", peripheralList));
+  }
+  if (item.display_link_roles?.length) {
+    const isLink = item.id === "create:display_link";
+    const roles = node("div", "line-list");
+    roles.append(node("p", "detail-subtitle", isLink
+      ? "Source and target types registered by the loaded pack. A placed Display Link needs a suitable block at each end."
+      : "This placed block has the following Display Link roles; available options can depend on its world state."));
+    const groups = isLink
+      ? [["Registered source types", "supports_display_source"], ["Registered target types", "supports_display_target"]]
+      : [["Displayable from this block", "provides_display_source"], ["Can receive display output", "accepts_display_output"]];
+    for (const [label, predicate] of groups) {
+      const entries = item.display_link_roles.filter(role => role.predicate === predicate);
+      if (!entries.length) continue;
+      const list = node("div", "line-list");
+      for (const role of entries) {
+        const link = node("button", "subtle-button", `${role.id} →`);
+        link.type = "button";
+        link.addEventListener("click", () => jump("adapter-definitions", role.id));
+        list.append(link);
+        if (!isLink && role.link_attributes?.registration_basis?.length)
+          list.append(row("Registered through", role.link_attributes.registration_basis.join(", ")));
+      }
+      if (isLink) {
+        const disclosure = node("details");
+        disclosure.append(node("summary", "", `${label} · ${count(entries.length)}`), list);
+        roles.append(disclosure);
+      } else roles.append(node("h3", "", `${label} · ${count(entries.length)}`), list);
+    }
+    root.append(section("Display Link", roles));
   }
   return root;
 }

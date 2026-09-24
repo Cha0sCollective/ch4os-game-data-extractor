@@ -20,6 +20,31 @@ from test_game_data_db import capture
 
 
 class LocalAppTests(unittest.TestCase):
+    def test_item_exposes_registered_display_link_roles(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, database = root / "capture.zip", root / "source.sqlite"
+            capture(source, adapter_rows=True)
+            import_capture(source, database)
+            with closing(sqlite3.connect(database)) as db:
+                db.execute(
+                    "INSERT INTO adapter_definitions (adapter_id, kind, id, status, attributes_json, source_record_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    ("create_display_links", "display_source", "create:item_count", "captured_directly",
+                     json.dumps({"implementation_class": "example.ItemCountSource"}), "{}"))
+                db.execute(
+                    "INSERT INTO adapter_relations (adapter_id, subject_kind, subject_id, predicate, "
+                    "object_kind, object_id, status, attributes_json, source_record_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    ("create_display_links", "item", "example:ore", "provides_display_source",
+                     "display_source", "create:item_count", "captured_directly",
+                     json.dumps({"registration_basis": ["block entity type example:ore"]}), "{}"))
+                db.commit()
+            role = Catalog(database).item("example:ore")["display_link_roles"][0]
+            self.assertEqual(role["id"], "create:item_count")
+            self.assertEqual(role["predicate"], "provides_display_source")
+            self.assertEqual(role["link_attributes"]["registration_basis"], ["block entity type example:ore"])
+
     def test_recipe_exposes_verified_cross_mod_relation(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)

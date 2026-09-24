@@ -29,6 +29,7 @@ final class MechanicAdapters {
                 new ElectroEnergeticsMechanicAdapter(),
                 new PetrochemMechanicAdapter(),
                 new DieselGeneratorsMechanicAdapter(),
+                new DisplayLinkAdapter(),
                 new CentralKitchenIntegrationAdapter(),
                 new SliceAndDiceIntegrationAdapter(),
                 new ComputerCraftPeripheralAdapter()

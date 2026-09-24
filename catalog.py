@@ -188,6 +188,7 @@ class Catalog:
             for block_property in result["block_state_properties"]:
                 block_property["allowed_values"] = json.loads(block_property.pop("allowed_values_json"))
             result["cc_peripherals"] = []
+            result["display_link_roles"] = []
             if self._has_table(db, "adapter_relations") and self._has_table(db, "adapter_definitions"):
                 for link in db.execute(
                     "SELECT d.adapter_id, d.kind, d.id, d.attributes_json, d.conditions_json, "
@@ -200,6 +201,21 @@ class Catalog:
                         value = peripheral.pop(field)
                         peripheral[field.removesuffix("_json")] = json.loads(value) if value else None
                     result["cc_peripherals"].append(peripheral)
+                for link in db.execute(
+                    "SELECT r.predicate, r.attributes_json AS link_attributes_json, "
+                    "r.conditions_json AS link_conditions_json, d.adapter_id, d.kind, d.id, "
+                    "d.attributes_json FROM adapter_relations r "
+                    "JOIN adapter_definitions d ON d.adapter_id=r.adapter_id AND d.kind=r.object_kind "
+                    "AND d.id=r.object_id WHERE r.subject_kind='item' AND r.subject_id=? "
+                    "AND r.adapter_id='create_display_links' "
+                    "AND r.predicate IN ('provides_display_source', 'accepts_display_output', "
+                    "'supports_display_source', 'supports_display_target') "
+                    "ORDER BY r.predicate, d.id", (item_id,)):
+                    role = dict(link)
+                    for field in ("attributes_json", "link_attributes_json", "link_conditions_json"):
+                        value = role.pop(field)
+                        role[field.removesuffix("_json")] = json.loads(value) if value else None
+                    result["display_link_roles"].append(role)
             return result
 
     def _recipe_where(self, q: str, recipe_type: str, mod: str, coverage: str) -> tuple[str, list]:

@@ -25,6 +25,10 @@ state properties, block-entity types, item and block tags, mechanic properties,
 and recipes that make or use it. A block's registered CC capability appears
 on its item page; mapped Lua methods appear where the installed provider class
 is known. Registration does not guarantee availability in every world state.
+Items with registered Create Display Link roles show their available data-source
+types or display-target types. The Display Link item lists all registered types
+in the loaded pack; actual content and target capacity depend on the placed
+blocks.
 Uses include captured item-tag membership.
 The **Recipes** view searches recipe IDs and known result items and filters by
 namespace and recipe type. It shows normalized inputs, outputs, intermediate
