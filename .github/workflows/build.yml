@@ -1,4 +1,4 @@
-name: Build legacy runtime exporter
+name: Build game data extractor
 
 on:
   push:
@@ -21,10 +21,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
       - name: Verify safety contract
         run: python verify_safety.py
+      - name: Test Packwiz source handling
+        run: python -m unittest discover -s tests
       - name: Parse Windows runner
         shell: pwsh
         run: |

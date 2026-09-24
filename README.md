@@ -23,12 +23,42 @@ requires a disposable dedicated server, zero players, and explicit capture
 confirmation. See [legacy exporter instructions](docs/legacy-exporter.md) for
 the original runner and archive contract.
 
+## Capture a Packwiz pack
+
+The new capture command accepts a hosted Packwiz `pack.toml` link (including a
+normal GitHub file link), a local or HTTPS ZIP
+containing Packwiz files, or a Prism import ZIP that points to a Packwiz pack.
+Both forms install only the server side into a new disposable NeoForge server.
+It reads the pack's Minecraft and NeoForge versions, so routine mod and
+NeoForge patch updates do not require a new hard-coded pack profile. This
+exporter build supports Minecraft 1.21.1 / NeoForge 21.1.x; other game or
+loader families need a compatible exporter build.
+
+Build the exporter JAR with Java 21, then use Python 3.11 or newer:
+
+```text
+python ch4os_capture.py "https://example.org/pack/pack.toml" --inspect
+python ch4os_capture.py "C:\path\to\pack.zip" --inspect
+python ch4os_capture.py "C:\path\to\pack.zip" --accept-minecraft-eula --output "C:\path\to\capture.zip"
+```
+
+The full capture downloads the official NeoForge server installer and a
+versioned Packwiz installer, installs the pack's server files, starts a local
+loopback-only server, and writes a verified export ZIP. The disposable work
+directory and logs are printed and retained for diagnosis. The EULA flag
+records acceptance only in that disposable server; review the
+[Minecraft EULA](https://www.minecraft.net/eula) before using it. For a Java
+21 installation that is not on `PATH`, pass `--java` with its executable path.
+The ZIP's prelaunch command is read only to find the Packwiz link; executable
+files inside a supplied ZIP are never launched.
+
 ## Build and verify
 
 With Java 21 and Python 3:
 
 ```text
 python verify_safety.py
+python -m unittest discover -s tests
 ./gradlew --no-daemon build
 ```
 
@@ -41,11 +71,10 @@ PowerShell can validate the Windows runner without starting Minecraft:
 The GitHub Actions workflow runs these checks and packages the original jar
 with the Windows runner. Field reports from the source repository are in
 `docs/field-reports/`; they document prior runs and do not claim a new run of
-this standalone repository.
+this standalone repository. The
+[Packwiz capture report](docs/field-reports/create-ch4os-public-packwiz.md)
+documents a new end-to-end run of this command.
 
-The next capture workflow will accept either a Packwiz `pack.toml` link or a
-Packwiz-based Prism import ZIP, install server-side files into a disposable
-directory, and select the correct Minecraft/NeoForge runtime automatically.
 The Prism ZIP contains installer metadata rather than the gameplay JARs.
 
 ## Origin and attribution
