@@ -118,6 +118,8 @@ final class RuntimeSnapshotWriter {
         MechanicAdapter.Result introspection = MechanicAdapters.collect(server, inScope);
         progressCount("effective mechanics facts", introspection.mechanics().size());
         progressCount("effective server/common configuration values", introspection.configs().size());
+        progressCount("adapter definitions", introspection.definitions().size());
+        progressCount("adapter relations", introspection.relations().size());
 
         progress(8, "Inventorying exact installed mod artifacts without extracting archive content.");
         InstalledArtifactInventory.Result artifactInventory = settings.scope().equals("pack")
@@ -150,6 +152,8 @@ final class RuntimeSnapshotWriter {
         JsonFiles.writeJsonLines(output.resolve("registry-tags.jsonl"), registryInventory.tags());
         JsonFiles.writeJsonLines(output.resolve("mechanics.jsonl"), introspection.mechanics());
         JsonFiles.writeJsonLines(output.resolve("config-values.jsonl"), introspection.configs());
+        JsonFiles.writeJsonLines(output.resolve("adapter-definitions.jsonl"), introspection.definitions());
+        JsonFiles.writeJsonLines(output.resolve("adapter-relations.jsonl"), introspection.relations());
         JsonFiles.writeJsonLines(
                 output.resolve("introspection-diagnostics.jsonl"),
                 introspection.diagnostics()
@@ -188,6 +192,8 @@ final class RuntimeSnapshotWriter {
                 registryInventory,
                 introspection.mechanics(),
                 introspection.configs(),
+                introspection.definitions(),
+                introspection.relations(),
                 artifactInventory
         );
         JsonFiles.writeJson(output.resolve("provenance.json"), provenance);
@@ -517,6 +523,8 @@ final class RuntimeSnapshotWriter {
             RegistryInventory registryInventory,
             List<Map<String, ?>> mechanics,
             List<Map<String, ?>> configs,
+            List<Map<String, ?>> definitions,
+            List<Map<String, ?>> relations,
             InstalledArtifactInventory.Result artifactInventory
     ) {
         Map<String, Object> row = new LinkedHashMap<>();
@@ -532,6 +540,8 @@ final class RuntimeSnapshotWriter {
         row.put("generic_registry_identity_capture", true);
         row.put("recipe_detail_format", "ch4os-recipe-detail-v1");
         row.put("item_detail_format", "ch4os-item-detail-v1");
+        row.put("adapter_definition_format", "ch4os-adapter-definition-v1");
+        row.put("adapter_relation_format", "ch4os-adapter-relation-v1");
         row.put("recipe_resource_json_exported", true);
         row.put("sample_ids", SAMPLE_IDS.stream().sorted().toList());
         row.put("dedicated_server", true);
@@ -555,6 +565,8 @@ final class RuntimeSnapshotWriter {
         counts.put("registry_tag_memberships", registryInventory.tags().size());
         counts.put("mechanics", mechanics.size());
         counts.put("effective_config_values", configs.size());
+        counts.put("adapter_definitions", definitions.size());
+        counts.put("adapter_relations", relations.size());
         counts.put("installed_artifacts", artifactInventory.artifacts().size());
         counts.put("artifact_entries", artifactInventory.entries().size());
         counts.put("mixin_configs", artifactInventory.mixinConfigs().size());

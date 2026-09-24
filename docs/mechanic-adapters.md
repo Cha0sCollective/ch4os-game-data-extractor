@@ -42,3 +42,31 @@ unsupported or missing data explicitly. The runner records an adapter
 diagnostic and continues generic capture when one adapter fails. Keep adapters
 read-only: use loaded runtime registries and configuration APIs, and do not
 read or modify world state to guess a static item property.
+
+## Structured adapter output
+
+The adapter result also accepts `definitions` and `relations`. The original
+three-list constructor remains available. New captures add optional
+`adapter-definitions.jsonl` and `adapter-relations.jsonl` files to the v1 archive
+manifest; older archives still import with empty corresponding SQLite tables.
+`AdapterRows` builds these rows, and `EffectiveDataResources.collect` reads the
+effective JSON layer in a named server data directory after datapacks load. It
+records the source pack and content hash and reports oversized or unreadable
+resources without guessing their contents.
+
+A definition has a stable namespaced `id`, `kind`, structured `attributes`,
+conditions, status, and source resource/API information. A relation has typed
+subject and object IDs, a predicate, structured attributes, conditions, and a
+source. For example, a fuel definition can retain its multipliers, while a
+`fuel_for` relation links the fuel to a particular machine with its operating
+conditions. Unknown values use an explicit unavailable status; they are never
+entered as zero. The importer stores these records in `adapter_definitions` and
+`adapter_relations` without pretending every definition is an item property.
+
+Adapters may declare several required mod IDs and optional class probes. The
+runner skips an absent integration cleanly, records the installed versions of
+its required mods with each structured row and diagnostic, and isolates a
+failing adapter from the generic inventory. These probes are feature checks,
+not hard-coded pack or mod version gates. Config facts should come from loaded
+runtime settings via `AdapterRows.config`; a TOML file by itself is not proof
+of the value currently in use.

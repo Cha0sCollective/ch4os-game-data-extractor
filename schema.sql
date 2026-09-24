@@ -149,6 +149,39 @@ CREATE TABLE config_values (
     evidence_status TEXT,
     source_api TEXT
 );
+CREATE TABLE adapter_definitions (
+    adapter_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN
+        ('captured_directly', 'derived', 'unavailable', 'unsupported', 'not_applicable', 'failed_to_collect')),
+    attributes_json TEXT,
+    conditions_json TEXT,
+    source_resource_id TEXT,
+    source_pack_id TEXT,
+    source_sha256 TEXT,
+    source_api TEXT,
+    source_record_json TEXT NOT NULL,
+    PRIMARY KEY (adapter_id, kind, id)
+);
+CREATE INDEX adapter_definitions_by_id ON adapter_definitions(kind, id);
+CREATE TABLE adapter_relations (
+    id INTEGER PRIMARY KEY,
+    adapter_id TEXT NOT NULL,
+    subject_kind TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    predicate TEXT NOT NULL,
+    object_kind TEXT NOT NULL,
+    object_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN
+        ('captured_directly', 'derived', 'unavailable', 'unsupported', 'not_applicable', 'failed_to_collect')),
+    attributes_json TEXT,
+    conditions_json TEXT,
+    source_api TEXT,
+    source_record_json TEXT NOT NULL
+);
+CREATE INDEX adapter_relations_by_subject ON adapter_relations(subject_kind, subject_id, predicate);
+CREATE INDEX adapter_relations_by_object ON adapter_relations(object_kind, object_id, predicate);
 CREATE TABLE unloaded_recipe_resources (
     id TEXT PRIMARY KEY,
     source_pack_id TEXT,

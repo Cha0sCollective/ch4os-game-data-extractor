@@ -96,7 +96,8 @@ def import_capture(capture: Path, output: Path) -> dict[str, int]:
                     raise ValueError(f"database foreign-key problems: {problems[:3]}")
                 db.commit()
                 summary = {name: db.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
-                           for name in ("items", "recipes", "item_components", "recipe_terms", "properties")}
+                           for name in ("items", "recipes", "item_components", "recipe_terms", "properties",
+                                        "adapter_definitions", "adapter_relations")}
         os.replace(temporary, output)
         return summary
     except BaseException:
@@ -255,6 +256,48 @@ def populate(db: sqlite3.Connection, archive: zipfile.ZipFile, manifest: dict, p
                      r.get("field_name"), nullable_json(r.get("effective_value")),
                      r.get("unit_hint"), r.get("evidence_status"), r.get("source_api"))
                     for r in rows(archive, "config-values.jsonl")))
+    definition_count = 0
+    for row in rows(archive, "adapter-definitions.jsonl"):
+        if row.get("format") != "ch4os-adapter-definition-v1":
+            raise ValueError("unsupported adapter definition format")
+        status = row.get("status")
+        if status not in PROPERTY_STATUSES:
+            raise ValueError(f"invalid adapter definition status: {status}")
+        attributes = row.get("attributes")
+        if status in {"captured_directly", "derived"} and not isinstance(attributes, (dict, list)):
+            raise ValueError(f"captured adapter definition needs structured attributes: {row.get('id')}")
+        if not all(isinstance(row.get(key), str) and row[key] for key in ("adapter_id", "kind", "id")):
+            raise ValueError("adapter definition needs adapter_id, kind, and id")
+        db.execute("INSERT INTO adapter_definitions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (row["adapter_id"], row["kind"], row["id"], status,
+                    nullable_json(attributes) if status in {"captured_directly", "derived"} else None,
+                    nullable_json(row.get("conditions")), row.get("source_resource_id"),
+                    row.get("source_pack_id"), row.get("source_sha256"), row.get("source_api"),
+                    compact(row)))
+        definition_count += 1
+    relation_count = 0
+    for row in rows(archive, "adapter-relations.jsonl"):
+        if row.get("format") != "ch4os-adapter-relation-v1":
+            raise ValueError("unsupported adapter relation format")
+        status = row.get("status")
+        if status not in PROPERTY_STATUSES:
+            raise ValueError(f"invalid adapter relation status: {status}")
+        if not all(isinstance(row.get(key), str) and row[key] for key in
+                   ("adapter_id", "subject_kind", "subject_id", "predicate", "object_kind", "object_id")):
+            raise ValueError("adapter relation needs endpoints and predicate")
+        attributes = row.get("attributes")
+        if attributes is not None and not isinstance(attributes, dict):
+            raise ValueError("adapter relation attributes must be an object")
+        db.execute("INSERT INTO adapter_relations (adapter_id, subject_kind, subject_id, predicate, object_kind, object_id, status, attributes_json, conditions_json, source_api, source_record_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (row["adapter_id"], row["subject_kind"], row["subject_id"], row["predicate"],
+                    row["object_kind"], row["object_id"], status, nullable_json(attributes),
+                    nullable_json(row.get("conditions")), row.get("source_api"), compact(row)))
+        relation_count += 1
+    counts = provenance.get("counts", {})
+    if definition_count != counts.get("adapter_definitions", definition_count):
+        raise ValueError("adapter definition count differs from provenance")
+    if relation_count != counts.get("adapter_relations", relation_count):
+        raise ValueError("adapter relation count differs from provenance")
     db.executemany("INSERT INTO unloaded_recipe_resources VALUES (?, ?, ?, ?, ?)",
                    ((r["id"], r.get("source_pack_id"), r.get("source_sha256"),
                      r.get("reason_status"), nullable_json(r.get("source_json")))

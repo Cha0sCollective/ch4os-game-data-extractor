@@ -14,7 +14,7 @@ def jsonl(records):
     return "".join(json.dumps(row) + "\n" for row in records).encode()
 
 
-def capture(path, *, details=True, corrupt=False, overrides=False):
+def capture(path, *, details=True, corrupt=False, overrides=False, adapter_rows=False):
     files = {
         "provenance.json": json.dumps({"format": "create-handbook-runtime-export-v1",
                                        "scope": "pack", "counts": {"items": 2, "recipes": 1}}).encode(),
@@ -69,6 +69,27 @@ def capture(path, *, details=True, corrupt=False, overrides=False):
             "effective_loaded": True,
             "layers": [{"pack_id": "mod/example"}, {"pack_id": "file/override"}],
         }])
+    if adapter_rows:
+        provenance = json.loads(files["provenance.json"])
+        provenance["counts"].update({"adapter_definitions": 2, "adapter_relations": 1})
+        files["provenance.json"] = json.dumps(provenance).encode()
+        files["adapter-definitions.jsonl"] = jsonl([
+            {"format": "ch4os-adapter-definition-v1", "adapter_id": "example",
+             "kind": "fuel", "id": "example:ingot_fuel", "status": "captured_directly",
+             "attributes": {"burn_ticks": 800}, "conditions": {"engine": "example:burner"},
+             "source_resource_id": "example:fuel/ingot.json", "source_pack_id": "mod/example",
+             "source_sha256": "abc"},
+            {"format": "ch4os-adapter-definition-v1", "adapter_id": "example",
+             "kind": "fuel", "id": "example:unknown_fuel", "status": "unavailable",
+             "attributes": None, "source_api": "example.api"},
+        ])
+        files["adapter-relations.jsonl"] = jsonl([
+            {"format": "ch4os-adapter-relation-v1", "adapter_id": "example",
+             "subject_kind": "item", "subject_id": "example:ingot", "predicate": "fuel_for",
+             "object_kind": "block", "object_id": "example:ingot_block",
+             "status": "captured_directly", "attributes": {"burn_ticks": 800},
+             "conditions": {"state": "lit"}, "source_api": "example.api"},
+        ])
     manifest = {"format": "create-handbook-runtime-export-v1", "files": [
         {"name": name, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
         for name, body in files.items()
@@ -127,6 +148,26 @@ class GameDataDbTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "mismatch"):
                 import_capture(source, database)
             self.assertFalse(database.exists())
+
+    def test_structured_adapter_rows_and_legacy_compatibility(self):
+        with TemporaryDirectory() as folder:
+            source, database = Path(folder) / "capture.zip", Path(folder) / "items.sqlite"
+            capture(source, adapter_rows=True)
+            summary = import_capture(source, database)
+            self.assertEqual(summary["adapter_definitions"], 2)
+            self.assertEqual(summary["adapter_relations"], 1)
+            with closing(sqlite3.connect(database)) as db:
+                attributes, pack = db.execute(
+                    "SELECT attributes_json, source_pack_id FROM adapter_definitions WHERE id=?",
+                    ("example:ingot_fuel",)).fetchone()
+                self.assertEqual(json.loads(attributes), {"burn_ticks": 800})
+                self.assertEqual(pack, "mod/example")
+                self.assertIsNone(db.execute(
+                    "SELECT attributes_json FROM adapter_definitions WHERE id=?",
+                    ("example:unknown_fuel",)).fetchone()[0])
+                self.assertEqual(db.execute(
+                    "SELECT predicate FROM adapter_relations WHERE subject_id=?",
+                    ("example:ingot",)).fetchone()[0], "fuel_for")
 
 
 if __name__ == "__main__":
