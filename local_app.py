@@ -18,6 +18,7 @@ import webbrowser
 
 from catalog import Catalog
 from game_data_db import import_capture
+from recipe_analysis import analyze_database, compare_databases
 
 
 ROOT = Path(__file__).resolve().parent
@@ -44,6 +45,21 @@ class AppState:
         with self.lock:
             self.catalog = catalog
         return overview
+
+    def compare(self, source: Path) -> dict:
+        current = self.current_catalog()
+        if current is None:
+            raise ValueError("open a current database first")
+        if not source.is_file():
+            raise ValueError(f"baseline file not found: {source}")
+        if source.suffix.lower() == ".zip":
+            database = self.data_dir / "databases" / f"baseline-{uuid.uuid4().hex[:12]}.sqlite"
+            import_capture(source, database)
+        elif source.suffix.lower() in {".sqlite", ".db"}:
+            database = source
+        else:
+            raise ValueError("baseline must be a Ch4oS capture ZIP or SQLite database")
+        return compare_databases(database, current.path)
 
     def start_job(self, kind: str, worker) -> str:
         with self.lock:
@@ -224,6 +240,12 @@ def handler_for(state: AppState):
                     return self._json(200, catalog.recipe(unquote(path.removeprefix("/api/recipes/"))))
                 if path == "/api/coverage":
                     return self._json(200, catalog.coverage())
+                if path == "/api/analysis":
+                    report = analyze_database(catalog.path)
+                    report["findings"] = report["findings"][:100]
+                    report["missing_ingredients"] = report["missing_ingredients"][:100]
+                    report["overrides"] = report["overrides"][:100]
+                    return self._json(200, report)
                 if path == "/api/export":
                     kind, fmt = args.get("kind", ""), args.get("format", "")
                     content_type, body = catalog.export(kind, fmt, args.get("q", ""), args.get("mod", ""),
@@ -278,6 +300,8 @@ def handler_for(state: AppState):
                 path = urlsplit(self.path).path
                 if path == "/api/upload-pack":
                     return self._json(200, {"path": str(self._upload("pack-sources"))})
+                if path == "/api/upload-baseline":
+                    return self._json(200, {"path": str(self._upload("baselines"))})
                 if path == "/api/import":
                     return self._json(202, {"job_id": state.import_job(self._upload("uploads"))})
                 data = self._read_json()
@@ -289,6 +313,12 @@ def handler_for(state: AppState):
                     return self._json(202, {"job_id": state.capture_job(
                         str(data.get("source", "")), java=str(data.get("java", "")),
                         memory=str(data.get("memory", "8G")), eula=data.get("eula") is True)})
+                if path == "/api/compare":
+                    report = state.compare(Path(str(data.get("baseline", ""))))
+                    for key in ("added_recipes", "removed_recipes", "changed_recipes",
+                                "new_conflicts", "resolved_conflicts"):
+                        report[key] = report[key][:100]
+                    return self._json(200, report)
                 return self._error(404, "not found")
             except (ValueError, OSError, json.JSONDecodeError) as exc:
                 return self._error(400, str(exc))

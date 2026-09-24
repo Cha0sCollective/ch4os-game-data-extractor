@@ -14,7 +14,7 @@ def jsonl(records):
     return "".join(json.dumps(row) + "\n" for row in records).encode()
 
 
-def capture(path, *, details=True, corrupt=False):
+def capture(path, *, details=True, corrupt=False, overrides=False):
     files = {
         "provenance.json": json.dumps({"format": "create-handbook-runtime-export-v1",
                                        "scope": "pack", "counts": {"items": 2, "recipes": 1}}).encode(),
@@ -62,6 +62,12 @@ def capture(path, *, details=True, corrupt=False):
             "item_outputs": [{"kind": "item", "id": "example:ingot", "quantity": 1, "path": "result"}],
             "sequence": [{"index": 0, "item_outputs": [
                 {"kind": "item", "id": "example:ore", "path": "results[0]"}]}],
+        }])
+    if overrides:
+        files["recipe-overrides.jsonl"] = jsonl([{
+            "id": "example:smelt", "resource_id": "example:recipe/smelt.json",
+            "effective_loaded": True,
+            "layers": [{"pack_id": "mod/example"}, {"pack_id": "file/override"}],
         }])
     manifest = {"format": "create-handbook-runtime-export-v1", "files": [
         {"name": name, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}

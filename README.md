@@ -24,6 +24,8 @@ normalized SQLite database from either current or earlier v1 capture ZIPs;
 see [database format and limitations](docs/item-database.md).
 `local_app.py` provides a mod-first directory, item and recipe browsing, coverage views, filtered
 CSV/JSON exports, and capture/import controls. See [local browser guide](docs/local-browser.md).
+Its Analysis view and `recipe_analysis.py` provide conservative recipe conflict
+findings and baseline-to-current snapshot comparison; see [recipe analysis](docs/recipe-analysis.md).
 
 This stage retains the original mod ID, settings, runner names, and output
 format so existing captures and handbook importers remain compatible. The

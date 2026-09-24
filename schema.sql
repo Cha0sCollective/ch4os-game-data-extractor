@@ -156,3 +156,9 @@ CREATE TABLE unloaded_recipe_resources (
     reason_status TEXT,
     source_json TEXT
 );
+CREATE TABLE recipe_overrides (
+    id TEXT PRIMARY KEY,
+    resource_id TEXT NOT NULL,
+    effective_loaded INTEGER NOT NULL,
+    layers_json TEXT NOT NULL
+);

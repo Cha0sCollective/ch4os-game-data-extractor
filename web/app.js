@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const state = {view: "mods", query: "", mod: "", type: "", coverage: "all", offset: 0, total: 0, showEmptyMods: false,
-  selected: null, database: null, filters: null, jobId: null, detailRequest: 0, renderRequest: 0};
+  selected: null, database: null, filters: null, jobId: null, detailRequest: 0, renderRequest: 0, comparison: null};
 const PAGE_SIZE = 50;
 
 function node(tag, className = "", text = "") {
@@ -35,6 +35,7 @@ function setModal(open) { $("#source-modal").hidden = !open; if (open) clearModa
 
 async function loadStatus() {
   const data = await request("/api/status");
+  if (state.database !== data.database) state.comparison = null;
   state.database = data.database;
   const capture = data.capture;
   $("#snapshot-label").textContent = capture ? `${capture.minecraft_version || "Minecraft"} · NeoForge ${capture.neoforge_version || "?"} · ${capture.scope || "capture"} scope` : "No database open";
@@ -73,16 +74,18 @@ function setView(view, preserveQuery = false) {
   populateModFilter();
   document.querySelectorAll("[data-view]").forEach(button => button.classList.toggle("active", button.dataset.view === view));
   $("#type-filter-wrap").hidden = view !== "recipes";
-  $("#filters-box").hidden = view === "coverage" || view === "mods";
-  $(".heading-actions").hidden = view === "coverage" || view === "mods";
-  $("#search-wrap").hidden = view === "coverage";
+  $("#filters-box").hidden = ["coverage", "mods", "analysis"].includes(view);
+  $(".heading-actions").hidden = ["coverage", "mods", "analysis"].includes(view);
+  $("#search-wrap").hidden = view === "coverage" || view === "analysis";
   $("#mod-scope").hidden = view !== "mods";
+  $("#analysis-controls").hidden = view !== "analysis";
   $("#pagination").hidden = true;
-  $("#view-eyebrow").textContent = view === "coverage" ? "COLLECTION HEALTH" : view === "mods" ? "MOD DIRECTORY" : "REGISTRY BROWSER";
-  $("#view-title").textContent = ({mods: "Mods", items: "Items", recipes: "Recipes", coverage: "Coverage"})[view];
+  $("#view-eyebrow").textContent = view === "analysis" ? "RECIPE VALIDATION" : view === "coverage" ? "COLLECTION HEALTH" : view === "mods" ? "MOD DIRECTORY" : "REGISTRY BROWSER";
+  $("#view-title").textContent = ({mods: "Mods", items: "Items", recipes: "Recipes", analysis: "Analysis", coverage: "Coverage"})[view];
   $("#view-description").textContent = ({mods: "Choose a loaded mod to browse its items.",
     items: "Every item registered by the captured server.",
     recipes: "Effective loaded recipes, with their known inputs and outputs.",
+    analysis: "Exact-input conflicts, ingredient gaps, and changes between captures.",
     coverage: "See what the exporter collected and where facts are incomplete."})[view];
   $("#search").placeholder = view === "mods" ? "Search mod name or ID" :
     view === "recipes" ? "Search recipe ID or result item" : "Search item name or registry ID";
@@ -114,7 +117,8 @@ async function render() {
     return;
   }
   try {
-    if (state.view === "coverage") return renderCoverage(renderId);
+    if (state.view === "coverage") return await renderCoverage(renderId);
+    if (state.view === "analysis") return await renderAnalysis(renderId);
     const params = filterParams(); params.set("limit", PAGE_SIZE); params.set("offset", state.offset);
     if (state.view === "mods") params.set("all", state.showEmptyMods ? "1" : "0");
     const data = await request(`/api/${state.view}?${params}`);
@@ -314,6 +318,85 @@ async function renderCoverage(renderId) {
       node("h2", "", "Unknown stays unknown"), node("p", "", "A missing or unsupported fact is shown with its collection status. It is never treated as zero or proof that no recipe exists.")));
   } catch (error) { toast(error.message); }
 }
+function analysisMetric(label, value) {
+  return append(node("div", "coverage-card"), node("h3", "", label), node("strong", "metric-number", count(value)));
+}
+function analysisEntry(title, subtitle, value) {
+  const button = append(node("button", "result-card"), node("div", "result-title", title), node("div", "result-id", subtitle));
+  button.type = "button";
+  button.addEventListener("click", () => {
+    const panel = $("#detail-panel");
+    const head = append(node("div", "detail-head"), node("div", "eyebrow", "ANALYSIS EVIDENCE"), node("h2", "", title), node("p", "detail-subtitle", subtitle));
+    const body = append(node("div", "detail-section"), node("h3", "", "Captured facts"), node("pre", "", pretty(value)));
+    panel.replaceChildren(head, body);
+  });
+  return button;
+}
+function analysisGroup(title, entries, total, describe) {
+  const group = append(node("section", "analysis-group"), node("h2", "", `${title} · ${count(total)}`));
+  if (describe) group.append(node("p", "", describe));
+  if (!entries.length) group.append(node("p", "muted-note", "None found in the supported evidence."));
+  else {
+    const list = node("div", "results");
+    for (const entry of entries) list.append(entry);
+    group.append(list);
+  }
+  if (entries.length < total) group.append(node("p", "muted-note", `Showing the first ${count(entries.length)} records. Use recipe_analysis.py for the complete JSON report.`));
+  return group;
+}
+async function renderAnalysis(renderId) {
+  const data = await request("/api/analysis");
+  if (renderId !== state.renderRequest) return;
+  const target = $("#results"); target.replaceChildren();
+  $("#result-count").textContent = `${count(data.counts.recipes)} effective recipes analyzed`;
+  $("#page-label").textContent = "";
+  $("#detail-panel").replaceChildren(append(node("div", "detail-placeholder"), node("span", "", "◇"),
+    node("h2", "", "Conservative findings"), node("p", "", "Select a finding to inspect its recipe IDs and evidence. Custom recipe matching stays inconclusive until an adapter understands its rules.")));
+  const metrics = append(node("div", "coverage-grid"),
+    analysisMetric("Exact-input analyzable", data.counts.analyzable),
+    analysisMetric("Conflict / duplicate pairs", data.counts.findings),
+    analysisMetric("Ingredient gaps", data.counts.missing_ingredients),
+    analysisMetric("Inconclusive recipes", data.counts.inconclusive));
+  target.append(metrics);
+  const findings = data.findings.map(finding => analysisEntry(
+    finding.kind === "competing_inputs" ? "Competing inputs" : "Equivalent recipes",
+    `${finding.context} · ${finding.recipes.join(" ↔ ")}`, finding));
+  target.append(analysisGroup("Input collisions", findings, data.counts.findings,
+    "Only exact ingredient definitions in supported vanilla contexts are classified. Stonecutter choices with different outputs are expected."));
+  const missing = data.missing_ingredients.map(issue => analysisEntry(
+    issue.kind.replaceAll("_", " "),
+    `${issue.recipe_id} · ${issue.target}`, issue));
+  target.append(analysisGroup("Ingredient gaps", missing, data.counts.missing_ingredients,
+    "An empty tag can be intentional. Inspect its recipe before treating it as broken."));
+  const overrideEntries = data.overrides.map(entry => analysisEntry("Recipe resource override", entry.id, entry));
+  target.append(analysisGroup("Resource overrides", overrideEntries, data.counts.overrides,
+    data.override_evidence === "captured" ? "Multiple active packs supplied the same recipe ID; the resource stack is shown in load order." :
+      "This capture predates resource-stack collection, so overrides cannot be determined from it."));
+  const inconclusive = data.inconclusive_types.slice(0, 30).map(entry => analysisEntry(
+    entry.type, `${count(entry.count)} recipes need context-specific matching`, entry));
+  target.append(analysisGroup("Inconclusive contexts", inconclusive, data.inconclusive_types.length,
+    "These recipes remain in the database and in snapshot diffs; their input collisions are not asserted."));
+  if (state.comparison) renderComparison(target, state.comparison);
+}
+function renderComparison(target, comparison) {
+  const counts = comparison.counts;
+  const heading = append(node("section", "analysis-group comparison-group"), node("h2", "", "Snapshot comparison"),
+    node("p", "", `${comparison.baseline.declared_pack_version || "Baseline"} → ${comparison.current.declared_pack_version || "Current"}`));
+  heading.append(append(node("div", "coverage-grid"), analysisMetric("Added", counts.added),
+    analysisMetric("Removed", counts.removed), analysisMetric("Changed", counts.changed),
+    analysisMetric("New conflicts", counts.new_conflicts), analysisMetric("Resolved conflicts", counts.resolved_conflicts)));
+  target.append(heading);
+  for (const [key, title] of [["new_conflicts", "New conflict groups"], ["resolved_conflicts", "Resolved conflict groups"],
+                              ["changed_recipes", "Changed recipes"], ["added_recipes", "Added recipes"],
+                              ["removed_recipes", "Removed recipes"]]) {
+    const entries = comparison[key].map(value => {
+      if (typeof value === "string") return analysisEntry(value, key.replaceAll("_", " "), {recipe_id: value});
+      return analysisEntry(value.id || value.recipes.join(" ↔ "),
+        value.fields ? value.fields.join(", ") : value.context, value);
+    });
+    target.append(analysisGroup(title, entries, counts[key.replace("_recipes", "") ] ?? counts[key], ""));
+  }
+}
 async function pollJob() {
   if (!state.jobId) return;
   try {
@@ -381,6 +464,22 @@ function bindEvents() {
   $("#export-json").addEventListener("click", () => exportCurrent("json"));
   $("#start-capture").addEventListener("click", handleCapture);
   $("#start-import").addEventListener("click", handleImport);
+  $("#run-comparison").addEventListener("click", async () => {
+    const button = $("#run-comparison"), status = $("#comparison-status");
+    button.disabled = true; status.textContent = "Comparing…";
+    try {
+      let baseline = $("#baseline-path").value.trim();
+      const file = $("#baseline-file").files[0];
+      if (file) {
+        const uploaded = await request("/api/upload-baseline", {method: "POST", headers: {"Content-Type": "application/zip"}, body: file});
+        baseline = uploaded.path;
+      }
+      state.comparison = await post("/api/compare", {baseline});
+      status.textContent = `${count(state.comparison.counts.changed)} changed recipes`;
+      render();
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
   $("#open-database").addEventListener("click", async () => {
     clearModalError();
     try { await post("/api/open-database", {path: $("#database-path").value.trim()}); await loadStatus(); await loadFilters(); setView("mods"); setModal(false); }

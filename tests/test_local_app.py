@@ -87,6 +87,8 @@ class LocalAppTests(unittest.TestCase):
                 self.assertEqual(get("/api/recipes?type=minecraft%3Asmelting")["total"], 1)
                 self.assertEqual(get("/api/recipes/example%3Asmelt")["terms"][0]["kind"], "item_tag")
                 self.assertEqual(get("/api/coverage")["item_components"][0]["status"], "captured")
+                self.assertEqual(get("/api/analysis")["counts"]["recipes"], 1)
+                self.assertEqual(post("/api/compare", {"baseline": str(database)})["counts"]["changed"], 0)
                 with urlopen(base + "/api/export?kind=items&format=csv&q=ore") as response:
                     self.assertIn(b"example:ore", response.read())
 

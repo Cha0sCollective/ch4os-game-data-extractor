@@ -94,6 +94,10 @@ final class RuntimeSnapshotWriter {
                 ? UnloadedRecipeResources.collect(server)
                 : List.of();
         progressCount("unloaded recipe resources (including conditional skips)", unloadedRecipeResources.size());
+        List<Map<String, ?>> recipeOverrides = settings.scope().equals("pack")
+                ? RecipeOverrideResources.collect(server)
+                : List.of();
+        progressCount("recipe IDs present in multiple resource packs", recipeOverrides.size());
 
         progress(5, "Resolving loaded item and block tag memberships.");
         List<Map<String, ?>> itemTags = collectTags(BuiltInRegistries.ITEM);
@@ -138,6 +142,7 @@ final class RuntimeSnapshotWriter {
         JsonFiles.writeJsonLines(output.resolve("recipes.jsonl"), recipes);
         JsonFiles.writeJsonLines(output.resolve("recipe-details.jsonl"), recipeDetails);
         JsonFiles.writeJsonLines(output.resolve("unloaded-recipe-resources.jsonl"), unloadedRecipeResources);
+        JsonFiles.writeJsonLines(output.resolve("recipe-overrides.jsonl"), recipeOverrides);
         JsonFiles.writeJsonLines(output.resolve("item-tags.jsonl"), itemTags);
         JsonFiles.writeJsonLines(output.resolve("block-tags.jsonl"), blockTags);
         JsonFiles.writeJsonLines(output.resolve("registry-summaries.jsonl"), registryInventory.summaries());

@@ -26,7 +26,10 @@ and recipes that make or use it. Uses include captured item-tag membership.
 The **Recipes** view searches recipe IDs and known result items and filters by
 namespace and recipe type. It shows normalized inputs, outputs, intermediate
 steps, collection statuses, active resource pack, and expandable raw detail
-JSON. **Coverage** groups unavailable, failed, and partial collection areas.
+JSON. **Analysis** shows conservative recipe conflict and ingredient findings
+and compares the open database against an earlier capture ZIP or database.
+See [recipe analysis](recipe-analysis.md) for supported contexts and limits.
+**Coverage** groups unavailable, failed, and partial collection areas.
 These statuses matter: an unexposed dynamic recipe input is not a known zero or
 proof that an item has no uses.
 
@@ -47,7 +50,7 @@ The **Capture or import** dialog has three routes:
 CSV and JSON buttons export the current filtered item or recipe list. These
 are factual list exports; the complete recipe definition is available on each
 recipe detail page and in the SQLite database. Generated documentation pages
-and snapshot comparisons are separate later stages.
+are a separate later stage.
 
 Only one capture or import job runs at a time. The dialog shows its progress
 and any error; the retained server work directory is named in the capture

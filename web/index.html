@@ -22,6 +22,7 @@
           <button data-view="mods" class="active"><span>▦</span> Mods <span class="nav-count" id="mod-count">—</span></button>
           <button data-view="items"><span>◈</span> Items <span class="nav-count" id="item-count">—</span></button>
           <button data-view="recipes"><span>⌘</span> Recipes <span class="nav-count" id="recipe-count">—</span></button>
+          <button data-view="analysis"><span>◇</span> Analysis</button>
           <button data-view="coverage"><span>◌</span> Coverage</button>
         </nav>
         <div class="sidebar-divider"></div>
@@ -47,6 +48,13 @@
         <div class="mod-context" id="mod-context" hidden><button id="back-mods">← All mods</button><span id="context-name"></span><button id="context-switch">View recipes →</button></div>
         <div class="search-box" id="search-wrap"><span>⌕</span><input id="search" type="search" placeholder="Search item name or registry ID" autocomplete="off"><kbd>/</kbd></div>
         <label class="mod-scope" id="mod-scope"><input type="checkbox" id="show-empty-mods"> Show mods without loaded items</label>
+        <div class="analysis-controls" id="analysis-controls" hidden>
+          <strong>Compare snapshots</strong><p>The open database is the new snapshot. Choose an earlier capture ZIP or database as the baseline.</p>
+          <label class="field-label" for="baseline-path">Baseline path</label><input id="baseline-path" type="text" placeholder="C:\captures\older.sqlite or older.zip">
+          <label class="field-label" for="baseline-file">Or choose a baseline capture ZIP</label><input id="baseline-file" type="file" accept=".zip,application/zip">
+          <button class="outline-button" id="run-comparison">Compare snapshots</button>
+          <span id="comparison-status" role="status"></span>
+        </div>
         <div class="list-meta"><span id="result-count">Choose a capture to explore</span><span id="page-label"></span></div>
         <div class="results" id="results"></div>
         <div class="pagination" id="pagination" hidden><button class="outline-button" id="prev-page">← Previous</button><span id="pagination-label"></span><button class="outline-button" id="next-page">Next →</button></div>

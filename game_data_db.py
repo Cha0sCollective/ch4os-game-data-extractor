@@ -259,6 +259,9 @@ def populate(db: sqlite3.Connection, archive: zipfile.ZipFile, manifest: dict, p
                    ((r["id"], r.get("source_pack_id"), r.get("source_sha256"),
                      r.get("reason_status"), nullable_json(r.get("source_json")))
                     for r in rows(archive, "unloaded-recipe-resources.jsonl")))
+    db.executemany("INSERT INTO recipe_overrides VALUES (?, ?, ?, ?)",
+                   ((r["id"], r["resource_id"], int(r["effective_loaded"]), compact(r["layers"]))
+                    for r in rows(archive, "recipe-overrides.jsonl")))
 
 
 def bool_integer(value: object) -> int | None:
