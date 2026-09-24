@@ -24,7 +24,12 @@ final class MechanicAdapters {
         List<MechanicAdapter> adapters = new ArrayList<>(List.of(
                 new CreateMechanicAdapter(),
                 new DeepSeasMechanicAdapter(),
-                new PowerGridMechanicAdapter()
+                new PowerGridMechanicAdapter(),
+                new PropulsionMechanicAdapter(),
+                new ElectroEnergeticsMechanicAdapter(),
+                new PetrochemMechanicAdapter(),
+                new DieselGeneratorsMechanicAdapter(),
+                new ComputerCraftPeripheralAdapter()
         ));
         List<Map<String, ?>> mechanics = new ArrayList<>();
         List<Map<String, ?>> configs = new ArrayList<>();

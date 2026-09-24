@@ -220,6 +220,12 @@ def handler_for(state: AppState):
                 catalog = self._catalog()
                 if path == "/api/filters":
                     return self._json(200, catalog.filters())
+                if path == "/api/adapter-definitions":
+                    return self._json(200, catalog.adapter_definitions(args.get("q", ""), args.get("adapter", ""),
+                                                                      int(args.get("limit", "50")), int(args.get("offset", "0"))))
+                if path == "/api/adapter-definitions/detail":
+                    return self._json(200, catalog.adapter_definition(args.get("adapter", ""),
+                                                                       args.get("kind", ""), args.get("id", "")))
                 if path == "/api/mods":
                     return self._json(200, catalog.mods(args.get("q", ""), args.get("all", "0") == "1",
                                                         self._number(args.get("limit", "50"), 50),

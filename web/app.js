@@ -42,6 +42,7 @@ async function loadStatus() {
   $("#mod-count").textContent = capture ? count(capture.counts.mods) : "—";
   $("#item-count").textContent = capture ? count(capture.counts.items) : "—";
   $("#recipe-count").textContent = capture ? count(capture.counts.recipes) : "—";
+  $("#definition-count").textContent = capture ? count(capture.counts.adapter_definitions) : "—";
   const card = $("#dataset-card"); card.replaceChildren();
   if (capture) {
     append(card, node("strong", "", `${count(capture.counts.items)} items · ${count(capture.counts.recipes)} recipes`),
@@ -61,6 +62,13 @@ async function loadFilters() {
 function populateModFilter() {
   if (!state.filters) return;
   const modSelect = $("#mod-filter"); modSelect.replaceChildren(new Option("All mods", ""));
+  if (state.view === "adapter-definitions") {
+    modSelect.replaceChildren(new Option("All adapters", ""));
+    for (const adapter of state.filters.adapters || []) modSelect.add(new Option(`${adapter.adapter_id} (${count(adapter.definition_count)})`, adapter.adapter_id));
+    if (![...modSelect.options].some(option => option.value === state.mod)) state.mod = "";
+    modSelect.value = state.mod;
+    return;
+  }
   for (const mod of state.filters.mods) {
     const amount = state.view === "recipes" ? mod.recipe_count : mod.item_count;
     if (amount || mod.id === state.mod) modSelect.add(new Option(`${mod.name} (${count(amount)})`, mod.id));
@@ -74,21 +82,25 @@ function setView(view, preserveQuery = false) {
   populateModFilter();
   document.querySelectorAll("[data-view]").forEach(button => button.classList.toggle("active", button.dataset.view === view));
   $("#type-filter-wrap").hidden = view !== "recipes";
+  $("#coverage-filter-wrap").hidden = view === "adapter-definitions";
+  $("#mod-filter-label").textContent = view === "adapter-definitions" ? "Adapter" : "Mod / namespace";
   $("#filters-box").hidden = ["coverage", "mods", "analysis"].includes(view);
-  $(".heading-actions").hidden = ["coverage", "mods", "analysis"].includes(view);
+  $(".heading-actions").hidden = ["coverage", "mods", "analysis", "adapter-definitions"].includes(view);
   $("#search-wrap").hidden = view === "coverage" || view === "analysis";
   $("#mod-scope").hidden = view !== "mods";
   $("#analysis-controls").hidden = view !== "analysis";
   $("#pagination").hidden = true;
   $("#view-eyebrow").textContent = view === "analysis" ? "RECIPE VALIDATION" : view === "coverage" ? "COLLECTION HEALTH" : view === "mods" ? "MOD DIRECTORY" : "REGISTRY BROWSER";
-  $("#view-title").textContent = ({mods: "Mods", items: "Items", recipes: "Recipes", analysis: "Analysis", coverage: "Coverage"})[view];
+  $("#view-title").textContent = ({mods: "Mods", items: "Items", recipes: "Recipes", "adapter-definitions": "Gameplay data", analysis: "Analysis", coverage: "Coverage"})[view];
   $("#view-description").textContent = ({mods: "Choose a loaded mod to browse its items.",
     items: "Every item registered by the captured server.",
     recipes: "Effective loaded recipes, with their known inputs and outputs.",
+    "adapter-definitions": "Fuel tables, wire ratings, specialized processes, and peripheral APIs from installed mods.",
     analysis: "Exact-input conflicts, ingredient gaps, and changes between captures.",
     coverage: "See what the exporter collected and where facts are incomplete."})[view];
   $("#search").placeholder = view === "mods" ? "Search mod name or ID" :
-    view === "recipes" ? "Search recipe ID or result item" : "Search item name or registry ID";
+    view === "recipes" ? "Search recipe ID or result item" :
+    view === "adapter-definitions" ? "Search gameplay ID or kind" : "Search item name or registry ID";
   for (const button of [$("#export-csv"), $("#export-json")]) button.disabled = !state.database || !["items", "recipes"].includes(view);
   renderModContext();
   render();
@@ -103,6 +115,7 @@ function renderModContext() {
 }
 function filterParams() {
   const params = new URLSearchParams({q: state.query, mod: state.mod, coverage: state.coverage});
+  if (state.view === "adapter-definitions") params.set("adapter", state.mod);
   if (state.view === "recipes") params.set("type", state.type);
   return params;
 }
@@ -124,15 +137,20 @@ async function render() {
     const data = await request(`/api/${state.view}?${params}`);
     if (renderId !== state.renderRequest) return;
     state.total = data.total;
-    const rows = data[state.view];
-    $("#result-count").textContent = `${count(data.total)} ${state.view} found`;
+    const rows = data[state.view === "adapter-definitions" ? "adapter_definitions" : state.view];
+    $("#result-count").textContent = `${count(data.total)} ${state.view === "adapter-definitions" ? "gameplay records" : state.view} found`;
     $("#page-label").textContent = data.total ? `${count(state.offset + 1)}–${count(state.offset + rows.length)} of ${count(data.total)}` : "";
     if (!rows.length) {
       target.append(emptyState("No matches", "Try another search or adjust the filters."));
       $("#detail-panel").replaceChildren(emptyDetail());
     } else {
-      for (const row of rows) target.append(state.view === "mods" ? modCard(row) : state.view === "items" ? itemCard(row) : recipeCard(row));
+      for (const row of rows) target.append(state.view === "mods" ? modCard(row) : state.view === "items" ? itemCard(row) :
+        state.view === "recipes" ? recipeCard(row) : definitionCard(row));
       if (state.view === "mods") $("#detail-panel").replaceChildren(modsPlaceholder());
+      else if (state.view === "adapter-definitions") {
+        if (!state.selected || !rows.some(row => definitionKey(row) === state.selected.id)) selectDefinition(rows[0]);
+        else markSelected();
+      }
       else if (!state.selected || !rows.some(row => row.id === state.selected.id)) selectRecord(state.view, rows[0].id);
       else markSelected();
     }
@@ -178,6 +196,43 @@ function recipeCard(recipe) {
     node("div", "result-id", recipe.serializer || "No serializer ID"), foot);
   card.addEventListener("click", () => selectRecord("recipes", recipe.id));
   return card;
+}
+function definitionKey(entry) { return `${entry.adapter_id}|${entry.kind}|${entry.id}`; }
+function definitionCard(entry) {
+  const card = node("button", "result-card"); card.type = "button"; card.dataset.id = definitionKey(entry);
+  append(card, node("div", "result-title", entry.id), node("div", "result-id", entry.kind.replaceAll("_", " ")),
+    append(node("div", "result-foot"), chip(entry.adapter_id, "teal"), chip(entry.status)));
+  card.addEventListener("click", () => selectDefinition(entry));
+  return card;
+}
+async function selectDefinition(entry) {
+  state.selected = {kind: "adapter-definitions", id: definitionKey(entry)}; markSelected();
+  const serial = ++state.detailRequest;
+  const params = new URLSearchParams({adapter: entry.adapter_id, kind: entry.kind, id: entry.id});
+  try {
+    const record = await request(`/api/adapter-definitions/detail?${params}`);
+    if (serial !== state.detailRequest) return;
+    $("#detail-panel").replaceChildren(definitionDetail(record));
+  } catch (error) { toast(error.message); }
+}
+function definitionDetail(entry) {
+  const root = node("div");
+  root.append(append(node("div", "detail-head"), node("div", "eyebrow", "GAMEPLAY DEFINITION"),
+    node("h2", "", entry.id), node("div", "detail-id", entry.kind.replaceAll("_", " ")),
+    node("p", "detail-subtitle", `${entry.adapter_id} · ${entry.status}`)));
+  const values = node("div", "line-list");
+  for (const [key, value] of Object.entries(entry.attributes || {})) values.append(
+    value && typeof value === "object" ? jsonDisclosure(key.replaceAll("_", " "), value) : row(key.replaceAll("_", " "), value));
+  root.append(section("Captured values", values));
+  if (entry.conditions) root.append(section("Conditions and limits", jsonDisclosure("Evidence conditions", entry.conditions)));
+  const links = node("div", "line-list");
+  for (const link of entry.relations || []) links.append(row(`${link.predicate.replaceAll("_", " ")} · ${link.subject_id}`,
+    `${link.object_kind}: ${link.object_id}`));
+  root.append(section(`Relationships · ${count((entry.relations || []).length)}`, links));
+  root.append(section("Provenance", append(node("div", "line-list"), row("Source API", entry.source_api),
+    row("Resource", entry.source_resource_id), row("Source pack", entry.source_pack_id),
+    row("Installed mod versions", entry.source_record?.required_mod_versions), row("SHA-256", entry.source_sha256))));
+  return root;
 }
 function markSelected() {
   document.querySelectorAll(".result-card").forEach(card => card.classList.toggle("selected", !!state.selected && card.dataset.id === state.selected.id));

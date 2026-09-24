@@ -10,12 +10,12 @@ item and recipe database and explored in a loopback-only browser.
 
 The `pack` capture inventories loaded mods, items, blocks, effective recipes,
 resolved tags, registry identities, and metadata about installed mod
-artifacts. Optional [mechanic adapters](docs/mechanic-adapters.md) now capture
-Create stress, Create Deep Seas hull ratings, and Power Grid wire and
-multimeter limits with runtime sources and conditions.
-The adapter contract also supports version-aware integration probes and
-structured definitions and relationships for upcoming fuel, power, and control
-adapters; older captures remain importable.
+artifacts. Optional [mechanic adapters](docs/mechanic-adapters.md) capture
+Create stress, Create Deep Seas hull ratings, Power Grid limits, Propulsion
+fuels, Electro Energetics ratings, Petrochem and Diesel Generators processes,
+and installed CC peripheral APIs. Runtime sources and conditions accompany
+these facts. The adapters use feature probes rather than pinned mod versions;
+older captures remain importable.
 The archive keeps the `create-handbook-runtime-export-v1` manifest and original
 recipe headers. Additive `recipe-details.jsonl` rows include item and fluid
 inputs and outputs, layouts, process facts, source JSON, and explicit coverage
@@ -25,7 +25,7 @@ The additive `item-details.jsonl` records default item component values and
 associated block-entity types where available. `game_data_db.py` builds a
 normalized SQLite database from either current or earlier v1 capture ZIPs;
 see [database format and limitations](docs/item-database.md).
-`local_app.py` provides a mod-first directory, item and recipe browsing, coverage views, filtered
+`local_app.py` provides a mod-first directory, item, recipe, and gameplay-data browsing, coverage views, filtered
 CSV/JSON exports, and capture/import controls. See [local browser guide](docs/local-browser.md).
 Its Analysis view and `recipe_analysis.py` provide conservative recipe conflict
 findings and baseline-to-current snapshot comparison; see [recipe analysis](docs/recipe-analysis.md).

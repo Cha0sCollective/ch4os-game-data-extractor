@@ -38,6 +38,8 @@ class Catalog:
             capture.pop("provenance_json")
             capture["counts"] = {name: db.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
                                  for name in ("mods", "items", "recipes", "blocks", "properties")}
+            capture["counts"]["adapter_definitions"] = db.execute(
+                "SELECT COUNT(*) FROM adapter_definitions").fetchone()[0] if self._has_table(db, "adapter_definitions") else 0
             return capture
 
     def filters(self) -> dict:
@@ -56,7 +58,59 @@ class Catalog:
             mods.sort(key=lambda mod: mod["name"].lower())
             types = [dict(row) for row in db.execute(
                 "SELECT type, COUNT(*) AS recipe_count FROM recipes GROUP BY type ORDER BY type")]
-            return {"mods": mods, "recipe_types": types}
+            adapters = [dict(row) for row in db.execute(
+                "SELECT adapter_id, COUNT(*) AS definition_count FROM adapter_definitions "
+                "GROUP BY adapter_id ORDER BY adapter_id")] if self._has_table(db, "adapter_definitions") else []
+            return {"mods": mods, "recipe_types": types, "adapters": adapters}
+
+    @staticmethod
+    def _has_table(db: sqlite3.Connection, name: str) -> bool:
+        return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+    def adapter_definitions(self, q: str = "", adapter: str = "", limit: int = 50, offset: int = 0) -> dict:
+        clauses, params = [], []
+        if q:
+            clauses.append("(lower(id) LIKE ? ESCAPE '\\' OR lower(kind) LIKE ? ESCAPE '\\')")
+            params.extend((_like(q), _like(q)))
+        if adapter:
+            clauses.append("adapter_id=?")
+            params.append(adapter)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        with self.connect() as db:
+            if not self._has_table(db, "adapter_definitions"):
+                return {"total": 0, "adapter_definitions": []}
+            total = db.execute("SELECT COUNT(*) FROM adapter_definitions" + where, params).fetchone()[0]
+            rows = [dict(row) for row in db.execute(
+                "SELECT adapter_id, kind, id, status, source_pack_id FROM adapter_definitions" + where +
+                " ORDER BY adapter_id, kind, id LIMIT ? OFFSET ?",
+                [*params, max(1, min(limit, 100)), max(0, offset)])]
+        return {"total": total, "adapter_definitions": rows}
+
+    def adapter_definition(self, adapter: str, kind: str, entry_id: str) -> dict:
+        with self.connect() as db:
+            if not self._has_table(db, "adapter_definitions"):
+                raise ValueError("this capture predates structured adapter definitions")
+            row = db.execute("SELECT * FROM adapter_definitions WHERE adapter_id=? AND kind=? AND id=?",
+                             (adapter, kind, entry_id)).fetchone()
+            if row is None:
+                raise ValueError(f"adapter definition not found: {adapter}/{kind}/{entry_id}")
+            result = dict(row)
+            for field in ("attributes_json", "conditions_json", "source_record_json"):
+                value = result.pop(field)
+                result[field.removesuffix("_json")] = json.loads(value) if value else None
+            result["relations"] = []
+            if self._has_table(db, "adapter_relations"):
+                for relation in db.execute(
+                    "SELECT * FROM adapter_relations WHERE adapter_id=? AND "
+                    "(subject_id=? OR object_id=?) ORDER BY predicate, subject_id, object_id LIMIT 250",
+                    (adapter, entry_id, entry_id)):
+                    link = dict(relation)
+                    for field in ("attributes_json", "conditions_json"):
+                        value = link.pop(field)
+                        link[field.removesuffix("_json")] = json.loads(value) if value else None
+                    link.pop("source_record_json", None)
+                    result["relations"].append(link)
+            return result
 
     def mods(self, q: str = "", include_empty: bool = False, limit: int = 50, offset: int = 0) -> dict:
         source = (" FROM mods "

@@ -22,20 +22,21 @@
           <button data-view="mods" class="active"><span>▦</span> Mods <span class="nav-count" id="mod-count">—</span></button>
           <button data-view="items"><span>◈</span> Items <span class="nav-count" id="item-count">—</span></button>
           <button data-view="recipes"><span>⌘</span> Recipes <span class="nav-count" id="recipe-count">—</span></button>
+          <button data-view="adapter-definitions"><span>▧</span> Gameplay data <span class="nav-count" id="definition-count">—</span></button>
           <button data-view="analysis"><span>◇</span> Analysis</button>
           <button data-view="coverage"><span>◌</span> Coverage</button>
         </nav>
         <div class="sidebar-divider"></div>
         <div id="filters-box">
         <div class="sidebar-label">FILTERS</div>
-        <label class="field-label" for="mod-filter">Mod / namespace</label>
+        <label class="field-label" for="mod-filter" id="mod-filter-label">Mod / namespace</label>
         <select id="mod-filter"><option value="">All mods</option></select>
         <div id="type-filter-wrap" hidden>
           <label class="field-label" for="type-filter">Recipe type</label>
           <select id="type-filter"><option value="">All recipe types</option></select>
         </div>
-        <label class="field-label" for="coverage-filter">Collection</label>
-        <select id="coverage-filter"><option value="all">All records</option><option value="incomplete">Needs attention</option></select>
+        <div id="coverage-filter-wrap"><label class="field-label" for="coverage-filter">Collection</label>
+        <select id="coverage-filter"><option value="all">All records</option><option value="incomplete">Needs attention</option></select></div>
         </div>
         <div class="sidebar-divider"></div>
         <div class="sidebar-label">CURRENT DATASET</div>

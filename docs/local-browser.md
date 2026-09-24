@@ -26,7 +26,12 @@ and recipes that make or use it. Uses include captured item-tag membership.
 The **Recipes** view searches recipe IDs and known result items and filters by
 namespace and recipe type. It shows normalized inputs, outputs, intermediate
 steps, collection statuses, active resource pack, and expandable raw detail
-JSON. **Analysis** shows conservative recipe conflict and ingredient findings
+JSON.
+The **Gameplay data** view browses structured adapter definitions by adapter:
+fuel tables, electrical ratings, specialized processes, and CC peripheral APIs.
+Each detail shows relationships, evidence conditions, and source provenance.
+Older captures without structured adapter files simply show an empty view.
+**Analysis** shows conservative recipe conflict and ingredient findings
 and compares the open database against an earlier capture ZIP or database.
 See [recipe analysis](recipe-analysis.md) for supported contexts and limits.
 **Coverage** groups unavailable, failed, and partial collection areas.

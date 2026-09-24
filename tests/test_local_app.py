@@ -53,7 +53,7 @@ class LocalAppTests(unittest.TestCase):
         with TemporaryDirectory() as folder:
             root = Path(folder)
             source, database = root / "capture.zip", root / "source.sqlite"
-            capture(source)
+            capture(source, adapter_rows=True)
             import_capture(source, database)
             state = AppState(root / "app-data", database)
             server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(state))
@@ -77,6 +77,11 @@ class LocalAppTests(unittest.TestCase):
                 self.assertEqual(get("/api/mods?q=example")["mods"][0]["item_count"], 2)
                 self.assertEqual(get("/api/mods?q=example")["mods"][0]["recipe_count"], 1)
                 self.assertEqual(get("/api/filters")["mods"][0]["version"], "2.0")
+                self.assertEqual(get("/api/filters")["adapters"][0]["definition_count"], 2)
+                self.assertEqual(get("/api/adapter-definitions?adapter=example")["total"], 2)
+                definition = get("/api/adapter-definitions/detail?adapter=example&kind=fuel&id=example%3Aingot_fuel")
+                self.assertEqual(definition["attributes"], {"burn_ticks": 800})
+                self.assertEqual(definition["source_pack_id"], "mod/example")
                 self.assertEqual(get("/api/items?q=ore")["items"][0]["id"], "example:ore")
                 self.assertEqual(get("/api/items/example%3Aore")["uses"], ["example:smelt"])
                 self.assertEqual(get("/api/items/example%3Aore")["makes"], [])

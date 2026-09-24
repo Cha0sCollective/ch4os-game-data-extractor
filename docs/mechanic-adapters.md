@@ -9,6 +9,11 @@ failure cannot remove an item or recipe. The current bundled adapters are:
 | Create | `BlockStressValues` and effective config API | Stress impact, capacity, generated RPM on associated blocks |
 | Create Deep Seas (`create_submarine`) | `HullStrengthConfig.getFor(defaultBlockState)` | Effective hull max water depth and implosion chance on associated blocks |
 | Power Grid | `powergrid:wire_types` registry and effective server equipment config | Wire current, resistance, length, density and insulation; multimeter voltage/current measurement ranges |
+| Create: Propulsion | Loaded thruster and Coral fuel managers; effective common config | Fluid/solid fuels, thrust and consumption multipliers, burn times, Coral FE per mB, fuel-to-block links |
+| Electro Energetics | Loaded wire and simulated-device registries; effective server config | Wire resistance and insulation ratings, device-to-block links, electrical settings |
+| Petrochem | Accepted loaded custom recipes and effective config | Pumpjack, distilling, electrolyzing, engine fuel and turbine fuel specifications; configured stress values |
+| Create Diesel Generators | Loaded fuel-type registry, accepted custom recipes, effective config | Engine fuel performance by size, accepted fluids, distillation and other processes |
+| CC peripherals | `LuaFunction` annotations in installed integration classes | Lua-visible method names and Java signatures for Propulsion, Electro, Diesel Generators, and Pinout |
 
 Deep Seas' hull values are ratings **when a block is used as a submarine hull**.
 Its API applies the installed pack's runtime multipliers. A submarine's actual
@@ -62,6 +67,17 @@ source. For example, a fuel definition can retain its multipliers, while a
 conditions. Unknown values use an explicit unavailable status; they are never
 entered as zero. The importer stores these records in `adapter_definitions` and
 `adapter_relations` without pretending every definition is an item property.
+
+The local viewer's **Gameplay data** section browses these definitions by
+adapter, with values, conditions, relationships, and provenance. Specialized
+recipe definitions are included only when the server recipe manager accepted
+their IDs; a rejected JSON resource cannot appear as an active process.
+
+Electro Energetics' `maxInsulationVoltage` is an insulation breakdown rating,
+not a universal grid limit. Empty material results on a Petrochem fuel recipe
+describe a fuel specification, not a missing item output. The CC catalog reads
+installed Lua method annotations but does not place blocks or computers, so it
+does not claim that each peripheral can attach in every world state.
 
 Adapters may declare several required mod IDs and optional class probes. The
 runner skips an absent integration cleanly, records the installed versions of
