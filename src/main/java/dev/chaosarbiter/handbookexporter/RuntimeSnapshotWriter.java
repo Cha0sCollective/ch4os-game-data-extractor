@@ -75,6 +75,11 @@ final class RuntimeSnapshotWriter {
         progress(2, "Collecting in-scope item registrations and default stack facts.");
         List<Map<String, ?>> items = collectItems();
         progressCount("items", items.size());
+        List<Map<String, ?>> itemDetails = new ItemDetailCollector(server, inScope).collect();
+        if (itemDetails.size() != items.size()) {
+            throw new IllegalStateException("item detail count differs from item count");
+        }
+        progressCount("item detail rows", itemDetails.size());
 
         progress(3, "Collecting corresponding block registrations and state properties.");
         List<Map<String, ?>> blocks = collectBlocks();
@@ -139,6 +144,7 @@ final class RuntimeSnapshotWriter {
         progress(9, "Writing JSONL evidence files with non-overwriting writes.");
         JsonFiles.writeJsonLines(output.resolve("mods.jsonl"), mods);
         JsonFiles.writeJsonLines(output.resolve("items.jsonl"), items);
+        JsonFiles.writeJsonLines(output.resolve("item-details.jsonl"), itemDetails);
         JsonFiles.writeJsonLines(output.resolve("blocks.jsonl"), blocks);
         JsonFiles.writeJsonLines(output.resolve("recipes.jsonl"), recipes);
         JsonFiles.writeJsonLines(output.resolve("recipe-details.jsonl"), recipeDetails);
@@ -531,6 +537,7 @@ final class RuntimeSnapshotWriter {
         row.put("pack_wide_registry_capture", settings.scope().equals("pack"));
         row.put("generic_registry_identity_capture", true);
         row.put("recipe_detail_format", "ch4os-recipe-detail-v1");
+        row.put("item_detail_format", "ch4os-item-detail-v1");
         row.put("recipe_resource_json_exported", true);
         row.put("sample_ids", SAMPLE_IDS.stream().sorted().toList());
         row.put("dedicated_server", true);

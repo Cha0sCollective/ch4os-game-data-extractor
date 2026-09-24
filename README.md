@@ -2,9 +2,9 @@
 
 This repository is the standalone successor to the runtime exporter in the
 [All of Create – Aeronautics handbook](https://github.com/Cha0sCollective/all-of-create-aeronautics-handbook).
-The first stage preserves the existing NeoForge 1.21.1 exporter and its Windows
-disposable-server runner. The game-data database and local application will be
-built on this verified baseline.
+The exporter preserves the existing NeoForge 1.21.1 runtime capture and its
+Windows disposable-server runner. Captures can now be imported into a local
+SQLite item and recipe database. A browsing application is a later stage.
 
 ## Current capabilities
 
@@ -16,6 +16,10 @@ recipe headers. Additive `recipe-details.jsonl` rows include item and fluid
 inputs and outputs, layouts, process facts, source JSON, and explicit coverage
 statuses. See [recipe detail format](docs/recipe-details.md).
 `recipe_lookup.py` answers which captured recipes make or use an item.
+The additive `item-details.jsonl` records default item component values and
+associated block-entity types where available. `game_data_db.py` builds a
+normalized SQLite database from either current or earlier v1 capture ZIPs;
+see [database format and limitations](docs/item-database.md).
 
 This stage retains the original mod ID, settings, runner names, and output
 format so existing captures and handbook importers remain compatible. The
@@ -54,6 +58,16 @@ records acceptance only in that disposable server; review the
 21 installation that is not on `PATH`, pass `--java` with its executable path.
 The ZIP's prelaunch command is read only to find the Packwiz link; executable
 files inside a supplied ZIP are never launched.
+
+## Build a local database
+
+With Python 3.11 or newer, import a capture to a new SQLite file and inspect
+an item:
+
+```text
+python game_data_db.py import "C:\path\to\capture.zip" --output "C:\path\to\game-data.sqlite"
+python game_data_db.py item "C:\path\to\game-data.sqlite" minecraft:iron_ingot
+```
 
 ## Build and verify
 
