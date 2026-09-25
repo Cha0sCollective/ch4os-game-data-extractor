@@ -82,22 +82,24 @@ function setView(view, preserveQuery = false) {
   populateModFilter();
   document.querySelectorAll("[data-view]").forEach(button => button.classList.toggle("active", button.dataset.view === view));
   $("#type-filter-wrap").hidden = view !== "recipes";
-  $("#coverage-filter-wrap").hidden = view === "adapter-definitions";
+  $("#coverage-filter-wrap").hidden = view === "adapter-definitions" || view === "research";
   $("#mod-filter-label").textContent = view === "adapter-definitions" ? "Adapter" : "Mod / namespace";
   $("#filters-box").hidden = ["coverage", "mods", "analysis"].includes(view);
-  $(".heading-actions").hidden = ["coverage", "mods", "analysis", "adapter-definitions"].includes(view);
-  $("#search-wrap").hidden = view === "coverage" || view === "analysis";
+  $(".heading-actions").hidden = ["coverage", "mods", "analysis", "adapter-definitions", "research"].includes(view);
+  $("#search-wrap").hidden = view === "coverage" || view === "analysis" || view === "research";
   $("#mod-scope").hidden = view !== "mods";
   $("#analysis-controls").hidden = view !== "analysis";
+  $("#research-controls").hidden = view !== "research";
   $("#pagination").hidden = true;
-  $("#view-eyebrow").textContent = view === "analysis" ? "RECIPE VALIDATION" : view === "coverage" ? "COLLECTION HEALTH" : view === "mods" ? "MOD DIRECTORY" : "REGISTRY BROWSER";
-  $("#view-title").textContent = ({mods: "Mods", items: "Items", recipes: "Recipes", "adapter-definitions": "Gameplay data", analysis: "Analysis", coverage: "Coverage"})[view];
+  $("#view-eyebrow").textContent = view === "research" ? "EVIDENCE REVIEW" : view === "analysis" ? "RECIPE VALIDATION" : view === "coverage" ? "COLLECTION HEALTH" : view === "mods" ? "MOD DIRECTORY" : "REGISTRY BROWSER";
+  $("#view-title").textContent = ({mods: "Mods", items: "Items", recipes: "Recipes", "adapter-definitions": "Gameplay data", analysis: "Analysis", coverage: "Coverage", research: "Research"})[view];
   $("#view-description").textContent = ({mods: "Choose a loaded mod to browse its items.",
     items: "Every item registered by the captured server.",
     recipes: "Effective loaded recipes, with their known inputs and outputs.",
     "adapter-definitions": "Fuel tables, wire ratings, specialized processes, and peripheral APIs from installed mods.",
     analysis: "Exact-input conflicts, ingredient gaps, and changes between captures.",
-    coverage: "See what the exporter collected and where facts are incomplete."})[view];
+    coverage: "See what the exporter collected and where facts are incomplete.",
+    research: "Prepare source-analysis jobs, review findings, and track mod coverage."})[view];
   $("#search").placeholder = view === "mods" ? "Search mod name or ID" :
     view === "recipes" ? "Search recipe ID or result item" :
     view === "adapter-definitions" ? "Search gameplay ID or kind" : "Search item name or registry ID";
@@ -132,6 +134,7 @@ async function render() {
   try {
     if (state.view === "coverage") return await renderCoverage(renderId);
     if (state.view === "analysis") return await renderAnalysis(renderId);
+    if (state.view === "research") return await renderResearch(renderId);
     const params = filterParams(); params.set("limit", PAGE_SIZE); params.set("offset", state.offset);
     if (state.view === "mods") params.set("all", state.showEmptyMods ? "1" : "0");
     const data = await request(`/api/${state.view}?${params}`);
@@ -264,7 +267,23 @@ function propertyRow(property) {
   const line = append(node("div", "line-item"), node("strong", "", `${property.property_key}: `), node("span", "", value));
   const context = property.conditions ? Object.entries(property.conditions).map(([key, entry]) => `${key.replaceAll("_", " ")}: ${safeValue(entry)}`) : [];
   if (context.length) line.append(node("div", "property-meta", context.join(" · ")));
-  if (property.source) line.append(node("div", "property-meta", `Source: ${property.source}`));
+  if (property.source) line.append(node("div", "property-meta", `Installed runtime · ${property.source}`));
+  return line;
+}
+function relationLine(link, reviewed = false) {
+  const line = node("div", "line-item");
+  const targetKind = link.direction === "incoming" ? link.subject_kind : link.object_kind;
+  const targetId = link.direction === "incoming" ? link.subject_id : link.object_id;
+  line.append(node("strong", "", `${link.predicate.replaceAll("_", " ")}: `));
+  if (targetKind === "item" || targetKind === "recipe") {
+    const button = node("button", "subtle-button", targetId + " →");
+    button.type = "button"; button.addEventListener("click", () => jump(targetKind === "item" ? "items" : "recipes", targetId));
+    line.append(button);
+  } else line.append(node("span", "", `${targetKind}: ${targetId}`));
+  line.append(node("div", "property-meta", `${link.direction || "outgoing"} · ${reviewed ? link.evidence_status.replaceAll("_", " ") : "installed runtime"}${link.adapter_id ? ` · ${link.adapter_id}` : ""}`));
+  if (link.conditions && Object.keys(link.conditions).length) line.append(jsonDisclosure("Conditions", link.conditions));
+  if (reviewed && link.evidence_locator) line.append(node("div", "property-meta", `Evidence: ${link.evidence_locator}`));
+  else if (link.source_api) line.append(node("div", "property-meta", `Source: ${link.source_api}`));
   return line;
 }
 function linkList(ids, kind) {
@@ -311,6 +330,27 @@ function itemDetail(item) {
   for (const property of item.properties) properties.append(propertyRow(property));
   root.append(section(`Mechanics & properties · ${count(item.properties.length)}`,
     item.properties.length ? properties : node("p", "detail-subtitle", "No item-specific mechanic facts were collected.")));
+  const reviewed = item.reviewed || {claims: [], relations: [], formulas: [], coverage: []};
+  const claims = node("div", "line-list");
+  for (const claim of reviewed.claims) {
+    const line = row(claim.predicate.replaceAll("_", " "), `${safeValue(claim.value)}${claim.unit ? ` ${claim.unit}` : ""}`);
+    line.append(node("div", "property-meta", `${claim.evidence_status.replaceAll("_", " ")} · ${claim.evidence_locator}`));
+    if (claim.conditions && Object.keys(claim.conditions).length) line.append(jsonDisclosure("Conditions", claim.conditions));
+    claims.append(line);
+  }
+  for (const formula of reviewed.formulas) {
+    const line = row(formula.result_predicate.replaceAll("_", " "), `Formula · ${formula.unit || "unit unspecified"}`);
+    line.append(node("div", "property-meta", `${formula.evidence_status.replaceAll("_", " ")} · ${formula.evidence_locator}`),
+      jsonDisclosure("Expression and conditions", {expression: formula.expression, conditions: formula.conditions}));
+    claims.append(line);
+  }
+  if (claims.childElementCount) root.append(section(`Reviewed specifications · ${count(claims.childElementCount)}`, claims));
+  const links = [...(item.relations || []).map(link => relationLine(link)),
+    ...reviewed.relations.map(link => relationLine(link, true))];
+  root.append(section(`Relationships · ${count(links.length)}`, links.length ? append(node("div", "line-list"), ...links) :
+    node("p", "detail-subtitle", "No relationships have been captured or reviewed for this item.")));
+  if (reviewed.coverage.length) root.append(section("Research coverage", append(node("div", "line-list"),
+    ...reviewed.coverage.map(entry => row(entry.area.replaceAll("_", " "), `${entry.status.replaceAll("_", " ")} · ${entry.explanation}`)))));
   const ccRegistered = item.properties.some(property =>
     property.property_key === "integration.computercraft.peripheral_registered" && property.value === true);
   if (ccRegistered || item.cc_peripherals?.length) {
@@ -438,6 +478,86 @@ async function renderCoverage(renderId) {
     $("#page-label").textContent = "";
     $("#detail-panel").replaceChildren(append(node("div", "detail-placeholder"), node("span", "", "◌"),
       node("h2", "", "Unknown stays unknown"), node("p", "", "A missing or unsupported fact is shown with its collection status. It is never treated as zero or proof that no recipe exists.")));
+  } catch (error) { toast(error.message); }
+}
+async function renderResearch(renderId) {
+  try {
+    const params = new URLSearchParams({mod: state.mod, status: "pending"});
+    const data = await request(`/api/research?${params}`);
+    if (renderId !== state.renderRequest) return;
+    const target = $("#results"); target.replaceChildren();
+    $("#pagination").hidden = true;
+    $("#result-count").textContent = `${count(data.findings.length)} pending findings · ${count(data.jobs.length)} jobs`;
+    $("#page-label").textContent = state.mod || "All mods";
+    if (data.coverage) {
+      const coverage = append(node("div", "coverage-grid"),
+        analysisMetric("Mod items", data.coverage.item_count),
+        analysisMetric("Items with any reviewed coverage", data.coverage.items_with_coverage),
+        analysisMetric("Items awaiting coverage", data.coverage.items_without_coverage),
+        analysisMetric("Unresolved systems", (data.coverage.system_areas || []).filter(entry => entry.status === "unresolved").length));
+      target.append(coverage);
+      const systems = node("div", "results");
+      for (const entry of data.coverage.system_areas || []) systems.append(append(node("div", "result-card"),
+        node("div", "result-title", `${entry.subject_id} · ${entry.area.replaceAll("_", " ")}`),
+        node("div", "result-id", entry.explanation),
+        append(node("div", "result-foot"), chip(entry.status, entry.status === "unresolved" ? "warn" : "teal"))));
+      if (systems.childElementCount) target.append(section("Gameplay system coverage", systems));
+      for (const entry of data.coverage.revalidation || []) target.append(node("p", "muted-note",
+        `Revalidate ${state.mod}: ${entry.reason.replaceAll("_", " ")} · ${entry.status}`));
+    }
+    const findings = node("div", "results");
+    for (const entry of data.findings) {
+      const finding = entry.finding;
+      const card = append(node("button", "result-card"),
+        node("div", "result-title", `${finding.record_type.replaceAll("_", " ")} · ${finding.subject_id}`),
+        node("div", "result-id", finding.predicate || finding.result_predicate || finding.area || finding.description || entry.id),
+        append(node("div", "result-foot"), chip(entry.status, "warn"), chip(finding.evidence?.kind || "review needed")));
+      card.type = "button";
+      card.addEventListener("click", () => {
+        const detail = append(node("div"), append(node("div", "detail-head"), node("div", "eyebrow", "PROPOSED FINDING"),
+          node("h2", "", finding.subject_id), node("div", "detail-id", entry.id)),
+          section("Agent evidence and conditions", jsonDisclosure("Complete finding", finding)));
+        const actions = node("div", "review-actions");
+        for (const decision of ["accept", "reject"]) {
+          const button = node("button", decision === "accept" ? "primary-button" : "outline-button", decision === "accept" ? "Accept finding" : "Reject finding");
+          button.type = "button";
+          button.addEventListener("click", async () => {
+            try {
+              await post("/api/research/review", {finding_id: entry.id, decision});
+              toast(`Finding ${decision === "accept" ? "accepted" : "rejected"}`);
+              render();
+            } catch (error) { toast(error.message); }
+          });
+          actions.append(button);
+        }
+        detail.append(actions);
+        $("#detail-panel").replaceChildren(detail);
+      });
+      findings.append(card);
+    }
+    target.append(section(`Pending findings · ${count(data.findings.length)}`,
+      data.findings.length ? findings : node("p", "detail-subtitle", "No agent findings await review.")));
+    const jobs = node("div", "results");
+    for (const job of data.jobs) {
+      const card = append(node("button", "result-card"), node("div", "result-title", `${job.mod_id} · ${job.subsystem}`),
+        node("div", "result-id", job.id), append(node("div", "result-foot"), chip(job.status, "teal")));
+      card.type = "button";
+      card.addEventListener("click", async () => {
+        try {
+          const packet = await request(`/api/research/jobs/${encodeURIComponent(job.id)}`);
+          $("#detail-panel").replaceChildren(append(node("div"),
+            append(node("div", "detail-head"), node("div", "eyebrow", "READ-ONLY AGENT JOB"),
+              node("h2", "", `${job.mod_id} · ${job.subsystem}`), node("div", "detail-id", job.id)),
+            section("Packet", jsonDisclosure("Installed-pack context and source paths", packet))));
+        } catch (error) { toast(error.message); }
+      });
+      jobs.append(card);
+    }
+    target.append(section(`Prepared jobs · ${count(data.jobs.length)}`,
+      data.jobs.length ? jobs : node("p", "detail-subtitle", "Select a mod and prepare jobs to begin source analysis.")));
+    if (!data.findings.length && !data.jobs.length) $("#detail-panel").replaceChildren(append(node("div", "detail-placeholder"),
+      node("span", "", "◫"), node("h2", "", "Review before import"),
+      node("p", "", "Agents supply evidence-backed proposals. Only accepted findings enter the knowledge database.")));
   } catch (error) { toast(error.message); }
 }
 function analysisMetric(label, value) {
@@ -586,6 +706,22 @@ function bindEvents() {
   $("#export-json").addEventListener("click", () => exportCurrent("json"));
   $("#start-capture").addEventListener("click", handleCapture);
   $("#start-import").addEventListener("click", handleImport);
+  $("#research-prepare").addEventListener("click", async () => {
+    if (!state.mod) return toast("Choose a mod first");
+    const button = $("#research-prepare"); button.disabled = true;
+    try {
+      const result = await post("/api/research/prepare", {mod_id: state.mod,
+        source_url: $("#research-source-url").value.trim()});
+      toast(`${count(result.job_count)} packets saved to ${result.output}`); render();
+    } catch (error) { toast(error.message); }
+    finally { button.disabled = false; }
+  });
+  $("#research-import").addEventListener("click", async () => {
+    try {
+      const result = await post("/api/research/submit", {path: $("#research-findings-path").value.trim()});
+      toast(`${count(result.submitted)} findings queued for review`); render();
+    } catch (error) { toast(error.message); }
+  });
   $("#run-comparison").addEventListener("click", async () => {
     const button = $("#run-comparison"), status = $("#comparison-status");
     button.disabled = true; status.textContent = "Comparing…";

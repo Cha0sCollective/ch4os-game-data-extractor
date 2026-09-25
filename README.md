@@ -27,6 +27,12 @@ normalized SQLite database from either current or earlier v1 capture ZIPs;
 see [database format and limitations](docs/item-database.md).
 `local_app.py` provides a mod-first directory, item, recipe, and gameplay-data browsing, coverage views, filtered
 CSV/JSON exports, and capture/import controls. See [local browser guide](docs/local-browser.md).
+The Research view prepares bounded source-analysis packets and reviews proposed
+facts into a persistent, snapshot-scoped GDE knowledge database. Item pages
+show all captured relationships and accepted source-derived claims with their
+evidence labels. See [reviewed research workflow](docs/research-workflow.md).
+The current Power Grid 0.6.1 pilot and its unresolved guide gaps are recorded
+in [the stage-3 field report](docs/field-reports/powergrid-pilot-stage28.md).
 Its Analysis view and `recipe_analysis.py` provide conservative recipe conflict
 findings and baseline-to-current snapshot comparison; see [recipe analysis](docs/recipe-analysis.md).
 

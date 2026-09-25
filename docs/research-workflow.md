@@ -1,0 +1,65 @@
+# Reviewed research in GDE
+
+GDE keeps the imported capture database reproducible from its ZIP. The separate
+`knowledge.sqlite` in the local app's data directory holds reviewed facts by
+capture snapshot. Snapshot IDs hash the authenticated capture evidence and
+loaded mod list. Importing the same capture again reuses the snapshot; another
+capture gets a new snapshot and pending revalidation for previously researched
+mods. Findings are never copied forward automatically.
+
+In the viewer, choose **Research**, select a mod, and prepare jobs. A packet
+directory contains `manifest.json`, one shared `context.json`, and small
+read-only source-route packets. It includes installed artifact SHA-256 values,
+mod version, items, blocks, effective recipes, current GDE facts and relation
+leads, and class paths. It does not contain source bodies or JAR bytes. A
+public source URL is a candidate, not proof of an exact installed-version
+match. Assign packets to low-cost research agents or run them manually. The
+agents must inspect the installed-version implementation and return findings;
+they must not edit the capture, knowledge store, or handbook.
+
+The CLI provides the same queue without the viewer:
+
+```text
+python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite prepare --mod powergrid --source-url https://github.com/patryk3211/PowerGrid --output jobs/powergrid
+python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite submit findings.jsonl
+python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite list --mod powergrid
+python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite review powergrid:battery_capacity --decision accept
+```
+
+To view findings reviewed through the CLI in the browser, open the same
+knowledge database explicitly:
+
+```text
+python local_app.py --database capture.sqlite --knowledge knowledge.sqlite
+```
+
+Jobs are grouped by device family (for example, `electricity-battery` and
+`compat-cc`) and remain immutable. Changing the source candidate or capture
+context creates new job IDs; it cannot rewrite an already reviewed packet.
+
+Each JSONL finding uses `format: ch4os-research-finding-v1`, the exact
+`snapshot_id` and `job_id` from its packet, a stable `finding_id`,
+`record_type`, `subject_kind`, and `subject_id`. Supported record types are
+`claim`, `relation`, `formula`, `coverage`, `gap`, and `adapter_request`.
+Claims add `predicate`, `value`, optional `unit`, and `conditions`.
+Relations add `predicate`, `object_kind`, `object_id`, and `conditions`.
+Formulas add `result_predicate`, a structured `expression`, `unit`, and
+`conditions`. Coverage adds `area`, `status` (`verified`, `not_applicable`, or
+`unresolved`), and `explanation`. Gaps and adapter requests add `description`.
+
+Consequential facts require typed `evidence` with `kind` and `locator`.
+`installed_runtime` locators begin with `capture/`. `exact_source` requires
+the installed artifact SHA-256, source revision, and
+`match_basis: exact_installed_version`; the reviewer must check the matching
+basis before acceptance. `installed_artifact` requires a matching artifact
+hash. A `test` locator points to a retained test result. Accepted facts show
+their evidence status on item pages. Source-derived facts are visibly
+different from runtime-confirmed facts. Unknown values are gaps or unresolved
+coverage, never a fabricated zero.
+
+Acceptance is a deliberate review action in the viewer or CLI. A finding with
+an absent item, block, recipe, or artifact is rejected by the importer. A
+rejected recipe resource cannot become an active recipe reference because only
+accepted loaded recipe IDs exist in the capture database. Accepted adapter
+requests remain visible in the reviewed queue until an extractor change and
+fresh capture address them.

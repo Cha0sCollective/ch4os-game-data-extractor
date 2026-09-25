@@ -20,6 +20,22 @@ CREATE TABLE mods (
     name TEXT NOT NULL,
     version TEXT
 );
+CREATE TABLE installed_artifacts (
+    artifact_id TEXT PRIMARY KEY,
+    file_name TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    byte_size INTEGER,
+    declared_mod_ids_json TEXT NOT NULL,
+    inventory_status TEXT NOT NULL
+);
+CREATE INDEX installed_artifacts_by_sha ON installed_artifacts(sha256);
+CREATE TABLE artifact_entries (
+    artifact_id TEXT NOT NULL REFERENCES installed_artifacts(artifact_id),
+    entry_path TEXT NOT NULL,
+    entry_kind TEXT,
+    byte_size INTEGER,
+    PRIMARY KEY (artifact_id, entry_path)
+);
 CREATE TABLE blocks (
     id TEXT PRIMARY KEY,
     namespace TEXT NOT NULL,

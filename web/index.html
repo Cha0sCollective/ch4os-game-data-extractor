@@ -23,6 +23,7 @@
           <button data-view="items"><span>◈</span> Items <span class="nav-count" id="item-count">—</span></button>
           <button data-view="recipes"><span>⌘</span> Recipes <span class="nav-count" id="recipe-count">—</span></button>
           <button data-view="adapter-definitions"><span>▧</span> Gameplay data <span class="nav-count" id="definition-count">—</span></button>
+          <button data-view="research"><span>◫</span> Research</button>
           <button data-view="analysis"><span>◇</span> Analysis</button>
           <button data-view="coverage"><span>◌</span> Coverage</button>
         </nav>
@@ -55,6 +56,13 @@
           <label class="field-label" for="baseline-file">Or choose a baseline capture ZIP</label><input id="baseline-file" type="file" accept=".zip,application/zip">
           <button class="outline-button" id="run-comparison">Compare snapshots</button>
           <span id="comparison-status" role="status"></span>
+        </div>
+        <div class="analysis-controls" id="research-controls" hidden>
+          <strong>Source-analysis queue</strong><p>Choose a mod, prepare read-only packets, then import an agent's JSON or JSONL findings for review.</p>
+          <label class="field-label" for="research-source-url">Public source candidate (optional)</label><input id="research-source-url" type="text" placeholder="https://github.com/owner/repository">
+          <button class="outline-button" id="research-prepare">Prepare mod jobs</button>
+          <label class="field-label" for="research-findings-path">Agent findings file path</label><input id="research-findings-path" type="text" placeholder="C:\research\findings.jsonl">
+          <button class="outline-button" id="research-import">Import findings</button>
         </div>
         <div class="list-meta"><span id="result-count">Choose a capture to explore</span><span id="page-label"></span></div>
         <div class="results" id="results"></div>

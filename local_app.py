@@ -18,7 +18,9 @@ import webbrowser
 
 from catalog import Catalog
 from game_data_db import import_capture
+from knowledge_store import KnowledgeStore
 from recipe_analysis import analyze_database, compare_databases
+from research_queue import submit_file, write_packets
 
 
 ROOT = Path(__file__).resolve().parent
@@ -27,10 +29,12 @@ MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 
 
 class AppState:
-    def __init__(self, data_dir: Path, database: Path | None = None):
+    def __init__(self, data_dir: Path, database: Path | None = None,
+                 knowledge: Path | None = None):
         self.data_dir = data_dir.resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.catalog = Catalog(database) if database else None
+        self.knowledge = KnowledgeStore(knowledge or self.data_dir / "knowledge.sqlite")
+        self.catalog = Catalog(database, self.knowledge) if database else None
         self.lock = threading.Lock()
         self.jobs: dict[str, dict] = {}
         self.running_job: str | None = None
@@ -40,7 +44,7 @@ class AppState:
             return self.catalog
 
     def select_database(self, path: Path) -> dict:
-        catalog = Catalog(path)
+        catalog = Catalog(path, self.knowledge)
         overview = catalog.overview()
         with self.lock:
             self.catalog = catalog
@@ -60,6 +64,15 @@ class AppState:
         else:
             raise ValueError("baseline must be a Ch4oS capture ZIP or SQLite database")
         return compare_databases(database, current.path)
+
+    def prepare_research(self, mod_id: str, source_url: str = "") -> dict:
+        current = self.current_catalog()
+        if current is None:
+            raise ValueError("open a capture database first")
+        if not re.fullmatch(r"[a-z0-9_.-]+", mod_id):
+            raise ValueError("select a valid mod ID")
+        output = self.data_dir / "research" / current.snapshot_id[:12] / mod_id
+        return write_packets(current.path, self.knowledge, mod_id, output, source_url)
 
     def start_job(self, kind: str, worker) -> str:
         with self.lock:
@@ -246,6 +259,22 @@ def handler_for(state: AppState):
                     return self._json(200, catalog.recipe(unquote(path.removeprefix("/api/recipes/"))))
                 if path == "/api/coverage":
                     return self._json(200, catalog.coverage())
+                if path == "/api/knowledge/mod-coverage":
+                    mod_id = args.get("mod", "")
+                    if not mod_id:
+                        raise ValueError("mod is required")
+                    return self._json(200, state.knowledge.mod_coverage(catalog.snapshot_id, mod_id, catalog.path))
+                if path == "/api/research":
+                    mod_id = args.get("mod", "")
+                    return self._json(200, {"snapshot_id": catalog.snapshot_id,
+                                            "jobs": state.knowledge.list_jobs(catalog.snapshot_id, mod_id),
+                                            "findings": state.knowledge.list_findings(catalog.snapshot_id, mod_id,
+                                                                                       args.get("status", "pending")),
+                                            "coverage": state.knowledge.mod_coverage(catalog.snapshot_id, mod_id, catalog.path)
+                                            if mod_id else None})
+                if path.startswith("/api/research/jobs/"):
+                    return self._json(200, state.knowledge.job(catalog.snapshot_id,
+                                                                unquote(path.removeprefix("/api/research/jobs/"))))
                 if path == "/api/analysis":
                     report = analyze_database(catalog.path)
                     report["findings"] = report["findings"][:100]
@@ -325,6 +354,17 @@ def handler_for(state: AppState):
                                 "new_conflicts", "resolved_conflicts"):
                         report[key] = report[key][:100]
                     return self._json(200, report)
+                if path == "/api/research/prepare":
+                    return self._json(200, state.prepare_research(str(data.get("mod_id", "")),
+                                                                  str(data.get("source_url", ""))))
+                if path == "/api/research/submit":
+                    return self._json(200, {"submitted": submit_file(state.knowledge,
+                                                                      Path(str(data.get("path", ""))))})
+                if path == "/api/research/review":
+                    catalog = self._catalog()
+                    return self._json(200, state.knowledge.review_finding(
+                        catalog.snapshot_id, str(data.get("finding_id", "")),
+                        str(data.get("decision", "")), catalog.path, str(data.get("note", ""))))
                 return self._error(404, "not found")
             except (ValueError, OSError, json.JSONDecodeError) as exc:
                 return self._error(400, str(exc))
@@ -339,6 +379,7 @@ def handler_for(state: AppState):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, help="Open an existing Ch4oS SQLite database")
+    parser.add_argument("--knowledge", type=Path, help="Use an existing reviewed knowledge database")
     parser.add_argument("--data-dir", type=Path, default=ROOT / "runs" / "local-app")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
@@ -346,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
     if not 1 <= args.port <= 65535:
         parser.error("port must be between 1 and 65535")
     try:
-        state = AppState(args.data_dir, args.database)
+        state = AppState(args.data_dir, args.database, args.knowledge)
         server = ThreadingHTTPServer(("127.0.0.1", args.port), handler_for(state))
         url = f"http://127.0.0.1:{server.server_port}/"
         print(f"Ch4oS local browser: {url}", flush=True)

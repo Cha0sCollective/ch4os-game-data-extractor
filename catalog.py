@@ -8,6 +8,7 @@ from pathlib import Path
 import sqlite3
 
 from game_data_db import item_report
+from knowledge_store import KnowledgeStore
 
 
 def _like(value: str) -> str:
@@ -15,13 +16,15 @@ def _like(value: str) -> str:
 
 
 class Catalog:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, knowledge: KnowledgeStore | None = None):
         self.path = path.resolve()
+        self.knowledge = knowledge
         if not self.path.is_file():
             raise FileNotFoundError(self.path)
         with self.connect() as db:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='capture'").fetchone():
                 raise ValueError(f"not a Ch4oS database: {self.path}")
+        self.snapshot_id = knowledge.register_capture(self.path) if knowledge else None
 
     @contextmanager
     def connect(self):
@@ -40,6 +43,7 @@ class Catalog:
                                  for name in ("mods", "items", "recipes", "blocks", "properties")}
             capture["counts"]["adapter_definitions"] = db.execute(
                 "SELECT COUNT(*) FROM adapter_definitions").fetchone()[0] if self._has_table(db, "adapter_definitions") else 0
+            capture["snapshot_id"] = self.snapshot_id
             return capture
 
     def filters(self) -> dict:
@@ -216,7 +220,33 @@ class Catalog:
                         value = role.pop(field)
                         role[field.removesuffix("_json")] = json.loads(value) if value else None
                     result["display_link_roles"].append(role)
+            result["relations"] = self._entity_relations(db, "item", item_id, block_id)
+            result["reviewed"] = self.knowledge.read_subject(self.snapshot_id, "item", item_id) if self.knowledge else {
+                "claims": [], "relations": [], "formulas": [], "coverage": []}
             return result
+
+    def _entity_relations(self, db: sqlite3.Connection, kind: str, entry_id: str,
+                          block_id: str | None = None) -> list[dict]:
+        if not self._has_table(db, "adapter_relations"):
+            return []
+        endpoints = [(kind, entry_id)]
+        if block_id:
+            endpoints.append(("block", block_id))
+        result = []
+        for endpoint_kind, endpoint_id in endpoints:
+            for row in db.execute(
+                    "SELECT adapter_id,subject_kind,subject_id,predicate,object_kind,object_id,"
+                    "status,attributes_json,conditions_json,source_api,source_record_json "
+                    "FROM adapter_relations WHERE (subject_kind=? AND subject_id=?) "
+                    "OR (object_kind=? AND object_id=?) ORDER BY adapter_id,predicate,subject_id,object_id",
+                    (endpoint_kind, endpoint_id, endpoint_kind, endpoint_id)):
+                relation = dict(row)
+                relation["attributes"] = json.loads(relation.pop("attributes_json")) if relation["attributes_json"] else None
+                relation["conditions"] = json.loads(relation.pop("conditions_json")) if relation["conditions_json"] else None
+                relation["source_record"] = json.loads(relation.pop("source_record_json"))
+                relation["direction"] = "outgoing" if (relation["subject_kind"], relation["subject_id"]) == (endpoint_kind, endpoint_id) else "incoming"
+                result.append(relation)
+        return result
 
     def _recipe_where(self, q: str, recipe_type: str, mod: str, coverage: str) -> tuple[str, list]:
         clauses, params = [], []

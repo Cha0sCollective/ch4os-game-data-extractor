@@ -14,7 +14,7 @@ def jsonl(records):
     return "".join(json.dumps(row) + "\n" for row in records).encode()
 
 
-def capture(path, *, details=True, corrupt=False, overrides=False, adapter_rows=False):
+def capture(path, *, details=True, corrupt=False, overrides=False, adapter_rows=False, artifacts=False):
     files = {
         "provenance.json": json.dumps({"format": "create-handbook-runtime-export-v1",
                                        "scope": "pack", "counts": {"items": 2, "recipes": 1}}).encode(),
@@ -90,6 +90,14 @@ def capture(path, *, details=True, corrupt=False, overrides=False, adapter_rows=
              "status": "captured_directly", "attributes": {"burn_ticks": 800},
              "conditions": {"state": "lit"}, "source_api": "example.api"},
         ])
+    if artifacts:
+        files["installed-artifacts.jsonl"] = jsonl([{
+            "artifact_id": "jar:example.jar#sha256:" + "a" * 64,
+            "file_name": "example.jar", "sha256": "a" * 64, "byte_size": 1000,
+            "declared_mod_ids": ["example"], "inventory_status": "complete"}])
+        files["artifact-entries.jsonl"] = jsonl([{
+            "artifact_id": "jar:example.jar#sha256:" + "a" * 64,
+            "entry_path": "org/example/electricity/Battery.class", "entry_kind": "class", "byte_size": 100}])
     manifest = {"format": "create-handbook-runtime-export-v1", "files": [
         {"name": name, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
         for name, body in files.items()

@@ -117,6 +117,13 @@ def populate(db: sqlite3.Connection, archive: zipfile.ZipFile, manifest: dict, p
 
     db.executemany("INSERT INTO mods VALUES (?, ?, ?)",
                    ((r["id"], r["name"], r.get("version")) for r in rows(archive, "mods.jsonl")))
+    db.executemany("INSERT INTO installed_artifacts VALUES (?, ?, ?, ?, ?, ?)",
+                   ((r["artifact_id"], r["file_name"], r["sha256"], r.get("byte_size"),
+                     compact(r.get("declared_mod_ids", [])), r.get("inventory_status", "unknown"))
+                    for r in rows(archive, "installed-artifacts.jsonl")))
+    db.executemany("INSERT INTO artifact_entries VALUES (?, ?, ?, ?)",
+                   ((r["artifact_id"], r["entry_path"], r.get("entry_kind"), r.get("byte_size"))
+                    for r in rows(archive, "artifact-entries.jsonl")))
     mod_ids = {r[0] for r in db.execute("SELECT id FROM mods")}
     def mod_id(identifier: str) -> str | None:
         candidate = namespace(identifier)

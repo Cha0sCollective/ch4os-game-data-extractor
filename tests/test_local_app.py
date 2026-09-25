@@ -162,6 +162,21 @@ class LocalAppTests(unittest.TestCase):
                 self.assertEqual(get("/api/recipes?type=minecraft%3Asmelting")["total"], 1)
                 self.assertEqual(get("/api/recipes/example%3Asmelt")["terms"][0]["kind"], "item_tag")
                 self.assertEqual(get("/api/coverage")["item_components"][0]["status"], "captured")
+                prepared = post("/api/research/prepare", {"mod_id": "example"})
+                self.assertEqual(prepared["job_count"], 1)
+                research = get("/api/research?mod=example")
+                self.assertEqual(research["coverage"]["item_count"], 2)
+                self.assertEqual(len(research["jobs"]), 1)
+                finding = {"format": "ch4os-research-finding-v1", "snapshot_id": research["snapshot_id"],
+                           "job_id": research["jobs"][0]["id"], "finding_id": "example:missing_behavior",
+                           "record_type": "gap", "subject_kind": "item", "subject_id": "example:ore",
+                           "description": "Unknown ore behavior"}
+                findings_path = root / "findings.jsonl"
+                findings_path.write_text(json.dumps(finding) + "\n", encoding="utf-8")
+                self.assertEqual(post("/api/research/submit", {"path": str(findings_path)})["submitted"], 1)
+                self.assertEqual(len(get("/api/research?mod=example")["findings"]), 1)
+                post("/api/research/review", {"finding_id": finding["finding_id"], "decision": "accept"})
+                self.assertEqual(get("/api/research?mod=example")["findings"], [])
                 self.assertEqual(get("/api/analysis")["counts"]["recipes"], 1)
                 self.assertEqual(post("/api/compare", {"baseline": str(database)})["counts"]["changed"], 0)
                 with urlopen(base + "/api/export?kind=items&format=csv&q=ore") as response:
