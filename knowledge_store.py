@@ -99,6 +99,20 @@ CREATE TABLE IF NOT EXISTS coverage (
     explanation TEXT NOT NULL,
     PRIMARY KEY (snapshot_id, subject_kind, subject_id, area)
 );
+CREATE TABLE IF NOT EXISTS coverage_history (
+    snapshot_id TEXT NOT NULL REFERENCES snapshots(id),
+    finding_id TEXT NOT NULL,
+    subject_kind TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    area TEXT NOT NULL,
+    previous_status TEXT,
+    new_status TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    reviewed_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (snapshot_id, finding_id)
+);
+CREATE INDEX IF NOT EXISTS coverage_history_by_subject
+    ON coverage_history(snapshot_id, subject_kind, subject_id, area);
 CREATE TABLE IF NOT EXISTS guide_refs (
     snapshot_id TEXT NOT NULL REFERENCES snapshots(id),
     guide_id TEXT NOT NULL,
@@ -137,6 +151,19 @@ CREATE TABLE IF NOT EXISTS findings (
     FOREIGN KEY (snapshot_id, job_id) REFERENCES research_jobs(snapshot_id, id)
 );
 CREATE INDEX IF NOT EXISTS findings_by_status ON findings(snapshot_id, status, job_id);
+CREATE TABLE IF NOT EXISTS adapter_tasks (
+    snapshot_id TEXT NOT NULL REFERENCES snapshots(id),
+    finding_id TEXT NOT NULL,
+    mod_id TEXT NOT NULL,
+    subject_kind TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+    resolution TEXT,
+    PRIMARY KEY (snapshot_id, finding_id),
+    FOREIGN KEY (snapshot_id, finding_id) REFERENCES findings(snapshot_id, id)
+);
+CREATE INDEX IF NOT EXISTS adapter_tasks_by_mod ON adapter_tasks(snapshot_id, mod_id, status);
 """
 
 
@@ -182,26 +209,30 @@ class KnowledgeStore:
                         "SELECT sha256,file_name,declared_mod_ids_json FROM installed_artifacts"):
                     artifacts.extend((snapshot_id, mod_id, sha, file_name) for mod_id in json.loads(declared))
         with self.connect() as db:
-            already_known = db.execute("SELECT 1 FROM snapshots WHERE id=?", (snapshot_id,)).fetchone()
-            prior = db.execute("SELECT id FROM snapshots WHERE id<>? ORDER BY rowid DESC LIMIT 1", (snapshot_id,)).fetchone()
             db.execute("INSERT OR IGNORE INTO snapshots VALUES (?, ?, ?, ?, ?)",
                        (snapshot_id, _canonical(provenance), provenance.get("generated_at_utc"),
                         provenance.get("minecraft_version"), provenance.get("neoforge_version")))
             db.executemany("INSERT OR IGNORE INTO snapshot_mods VALUES (?, ?, ?)",
                            ((snapshot_id, mod_id, version) for mod_id, version in mods))
             db.executemany("INSERT OR IGNORE INTO snapshot_artifacts VALUES (?, ?, ?, ?)", artifacts)
-            if not already_known and prior:
-                prior_id = prior[0]
-                previous_versions = {row[0]: row[1] for row in db.execute(
-                    "SELECT mod_id,version FROM snapshot_mods WHERE snapshot_id=?", (prior_id,))}
-                reviewed_mods = {row[0].split(":", 1)[0] for table in ("claims", "relations", "formulas")
-                                 for row in db.execute(f"SELECT subject_id FROM {table} WHERE snapshot_id=?", (prior_id,))}
-                for mod_id, version in mods:
-                    if mod_id not in reviewed_mods or mod_id not in previous_versions:
-                        continue
-                    reason = "mod_version_changed" if version != previous_versions[mod_id] else "pack_snapshot_changed"
-                    db.execute("INSERT INTO revalidation VALUES (?, ?, ?, ?, 'pending')",
-                               (snapshot_id, mod_id, prior_id, reason))
+            current_rowid = db.execute("SELECT rowid FROM snapshots WHERE id=?", (snapshot_id,)).fetchone()[0]
+            reviewed = {(row[0], row[1].split(":", 1)[0])
+                        for table in ("claims", "relations", "formulas", "coverage")
+                        for row in db.execute(f"SELECT DISTINCT snapshot_id,subject_id FROM {table} "
+                                              "WHERE instr(subject_id, ':') > 0")}
+            latest_reviewed: dict[str, tuple[str, str | None]] = {}
+            for row in db.execute("SELECT s.id,sm.mod_id,sm.version FROM snapshots s "
+                                  "JOIN snapshot_mods sm ON sm.snapshot_id=s.id "
+                                  "WHERE s.rowid<? ORDER BY s.rowid DESC", (current_rowid,)):
+                if row[1] not in latest_reviewed and (row[0], row[1]) in reviewed:
+                    latest_reviewed[row[1]] = (row[0], row[2])
+            for mod_id, version in mods:
+                if mod_id not in latest_reviewed:
+                    continue
+                prior_id, prior_version = latest_reviewed[mod_id]
+                reason = "mod_version_changed" if version != prior_version else "pack_snapshot_changed"
+                db.execute("INSERT OR IGNORE INTO revalidation VALUES (?, ?, ?, ?, 'pending')",
+                           (snapshot_id, mod_id, prior_id, reason))
             db.commit()
         return snapshot_id
 
@@ -227,6 +258,10 @@ class KnowledgeStore:
             coverage = [dict(row) for row in db.execute(
                 "SELECT area,status,explanation FROM coverage WHERE snapshot_id=? AND subject_kind=? AND subject_id=? ORDER BY area",
                 (snapshot_id, kind, subject_id))]
+            coverage_history = [dict(row) for row in db.execute(
+                "SELECT area,previous_status,new_status,explanation,finding_id,reviewed_at_utc "
+                "FROM coverage_history WHERE snapshot_id=? AND subject_kind=? AND subject_id=? "
+                "ORDER BY rowid", (snapshot_id, kind, subject_id))]
         for row in claims:
             row["value"] = json.loads(row.pop("value_json"))
             row["conditions"] = json.loads(row.pop("conditions_json"))
@@ -235,7 +270,8 @@ class KnowledgeStore:
         for row in formulas:
             row["expression"] = json.loads(row.pop("expression_json"))
             row["conditions"] = json.loads(row.pop("conditions_json"))
-        return {"claims": claims, "relations": relations, "formulas": formulas, "coverage": coverage}
+        return {"claims": claims, "relations": relations, "formulas": formulas,
+                "coverage": coverage, "coverage_history": coverage_history}
 
     def mod_coverage(self, snapshot_id: str, mod_id: str, capture_db: Path) -> dict:
         with closing(sqlite3.connect(f"file:{capture_db.resolve().as_posix()}?mode=ro", uri=True)) as capture:
@@ -307,11 +343,12 @@ class KnowledgeStore:
                                   (finding["snapshot_id"], finding["finding_id"])).fetchone()
             if existing and existing[0] != encoded:
                 raise ValueError("finding ID already has different content")
-            db.execute("INSERT OR IGNORE INTO findings (snapshot_id,id,job_id,record_type,finding_json) "
-                       "VALUES (?,?,?,?,?)", (finding["snapshot_id"], finding["finding_id"],
-                                            finding["job_id"], finding["record_type"], encoded))
-            db.execute("UPDATE research_jobs SET status='submitted' WHERE snapshot_id=? AND id=? AND status='ready'",
-                       (finding["snapshot_id"], finding["job_id"]))
+            inserted = db.execute("INSERT OR IGNORE INTO findings (snapshot_id,id,job_id,record_type,finding_json) "
+                                  "VALUES (?,?,?,?,?)", (finding["snapshot_id"], finding["finding_id"],
+                                                       finding["job_id"], finding["record_type"], encoded)).rowcount
+            if inserted:
+                db.execute("UPDATE research_jobs SET status='submitted' WHERE snapshot_id=? AND id=?",
+                           (finding["snapshot_id"], finding["job_id"]))
 
     def list_findings(self, snapshot_id: str, mod_id: str = "", status: str = "pending") -> list[dict]:
         if status not in {"pending", "accepted", "rejected", "all"}:
@@ -333,6 +370,25 @@ class KnowledgeStore:
                 entry["finding"] = json.loads(entry.pop("finding_json"))
                 result.append(entry)
             return result
+
+    def list_adapter_tasks(self, snapshot_id: str, mod_id: str = "") -> list[dict]:
+        query = "SELECT * FROM adapter_tasks WHERE snapshot_id=?"
+        params = [snapshot_id]
+        if mod_id:
+            query += " AND mod_id=?"
+            params.append(mod_id)
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(query + " ORDER BY status,mod_id,finding_id", params)]
+
+    def resolve_adapter_task(self, snapshot_id: str, finding_id: str, resolution: str) -> None:
+        if not isinstance(resolution, str) or not resolution.strip():
+            raise ValueError("resolution needs evidence or a capture reference")
+        with self.connect() as db:
+            changed = db.execute("UPDATE adapter_tasks SET status='resolved',resolution=? "
+                                 "WHERE snapshot_id=? AND finding_id=? AND status='open'",
+                                 (resolution, snapshot_id, finding_id)).rowcount
+            if not changed:
+                raise ValueError("open adapter task not found")
 
     def review_finding(self, snapshot_id: str, finding_id: str, decision: str,
                        capture_db: Path, note: str = "") -> dict:
@@ -368,6 +424,11 @@ class KnowledgeStore:
         if record_type in {"gap", "adapter_request"}:
             if not isinstance(finding.get("description"), str) or not finding["description"].strip():
                 raise ValueError("gap or adapter request needs a description")
+            if record_type == "adapter_request":
+                db.execute("INSERT INTO adapter_tasks "
+                           "(snapshot_id,finding_id,mod_id,subject_kind,subject_id,description) "
+                           "VALUES (?,?,?,?,?,?)", (snapshot_id, finding["finding_id"], mod_id,
+                           finding["subject_kind"], finding["subject_id"], finding["description"]))
             return
         if record_type == "coverage":
             if finding.get("status") not in {"verified", "not_applicable", "unresolved"}:
@@ -377,8 +438,19 @@ class KnowledgeStore:
             explanation = finding.get("explanation")
             if not isinstance(explanation, str) or not explanation.strip():
                 raise ValueError("coverage needs an explanation")
-            db.execute("INSERT INTO coverage VALUES (?,?,?,?,?,?)", (snapshot_id, finding["subject_kind"],
-                       finding["subject_id"], finding["area"], finding["status"], explanation))
+            previous = db.execute("SELECT status FROM coverage WHERE snapshot_id=? AND subject_kind=? "
+                                  "AND subject_id=? AND area=?", (snapshot_id, finding["subject_kind"],
+                                  finding["subject_id"], finding["area"])).fetchone()
+            db.execute("INSERT INTO coverage VALUES (?,?,?,?,?,?) ON CONFLICT "
+                       "(snapshot_id,subject_kind,subject_id,area) DO UPDATE SET "
+                       "status=excluded.status,explanation=excluded.explanation",
+                       (snapshot_id, finding["subject_kind"], finding["subject_id"],
+                        finding["area"], finding["status"], explanation))
+            db.execute("INSERT INTO coverage_history "
+                       "(snapshot_id,finding_id,subject_kind,subject_id,area,previous_status,new_status,explanation) "
+                       "VALUES (?,?,?,?,?,?,?,?)", (snapshot_id, finding["finding_id"], finding["subject_kind"],
+                       finding["subject_id"], finding["area"], previous[0] if previous else None,
+                       finding["status"], explanation))
             return
         evidence = finding.get("evidence")
         if not isinstance(evidence, dict) or evidence.get("kind") not in {

@@ -21,6 +21,7 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
     private static final String BATTERY_SPEC = "org.patryk3211.powergrid.electricity.battery.BatterySpec";
     private static final String PORTABLE_BATTERY_BLOCK = "org.patryk3211.powergrid.equipment.portablebattery.PortableBatteryBlock";
     private static final String BATTERY_UTILS = "org.patryk3211.powergrid.equipment.portablebattery.BatteryUtils";
+    private static final String SWITCH_BLOCK = "org.patryk3211.powergrid.electricity.electricswitch.SwitchBlock";
     private static final ResourceLocation WIRE_REGISTRY = ResourceLocation.parse("powergrid:wire_types");
 
     @Override
@@ -88,6 +89,27 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                         "status", "partial", "error_class", exception.getClass().getName(),
                         "error_message", String.valueOf(exception.getMessage()),
                         "row_count", 0));
+            }
+            try {
+                addElectricalSystemSettings(facts, configsOut, inScope);
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException exception) {
+                diagnostics.add(Map.of("subsystem", "mechanic_adapter:powergrid:electrical_settings",
+                        "status", "partial", "error_class", exception.getClass().getName(),
+                        "error_message", String.valueOf(exception.getMessage()), "row_count", 0));
+            }
+            try {
+                addSwitchThresholds(facts, inScope);
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException exception) {
+                diagnostics.add(Map.of("subsystem", "mechanic_adapter:powergrid:switches",
+                        "status", "partial", "error_class", exception.getClass().getName(),
+                        "error_message", String.valueOf(exception.getMessage()), "row_count", 0));
+            }
+            try {
+                addGaugeRanges(facts, inScope);
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException exception) {
+                diagnostics.add(Map.of("subsystem", "mechanic_adapter:powergrid:gauges",
+                        "status", "partial", "error_class", exception.getClass().getName(),
+                        "error_message", String.valueOf(exception.getMessage()), "row_count", 0));
             }
             return new Result(facts, configsOut, definitions, relations, diagnostics);
         } catch (ReflectiveOperationException exception) {
@@ -245,11 +267,112 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
         }
     }
 
+    private void addElectricalSystemSettings(List<Map<String, ?>> facts, List<Map<String, ?>> configsOut,
+                                              Predicate<ResourceLocation> inScope)
+            throws ReflectiveOperationException {
+        Object electricity = field(Class.forName(CONFIG_CLASS).getMethod("server").invoke(null), "electricity");
+        String[][] settings = {
+                {"solar_panel", "solarPanelVoc", "electrical.solar.reference_open_circuit_voltage", "V", "reference specification; actual output depends on irradiance, weather, temperature, orientation, and connected load"},
+                {"solar_panel", "solarPanelIsc", "electrical.solar.reference_short_circuit_current", "A", "reference specification; not a guaranteed operating current"},
+                {"solar_panel", "solarPanelVmp", "electrical.solar.reference_maximum_power_voltage", "V", "reference maximum-power point; not a fixed output voltage"},
+                {"solar_panel", "solarPanelImp", "electrical.solar.reference_maximum_power_current", "A", "reference maximum-power point; not a fixed output current"},
+                {"solar_panel", "solarPanelCellCount", "electrical.solar.cell_count", "cells", "loaded panel model"},
+                {"solar_panel", "solarPanelNOCT", "electrical.solar.nominal_operating_cell_temperature", "deg C", "model reference temperature, not a guaranteed operating temperature"},
+                {"solar_panel", "solarPanelMaxSize", "electrical.solar.maximum_connected_panels", "panels", "assembled array limit; not per-panel output"},
+                {"grounding_rod", "groundingMinimumBlocks", "electrical.grounding.minimum_conductive_blocks", "blocks", "minimum conductive blocks before a grounding path is enabled"},
+                {"grounding_rod", "groundingMaximumBlocks", "electrical.grounding.maximum_counted_blocks", "blocks", "upper bound used in resistance calculation"},
+                {"grounding_rod", "groundingHighestResistance", "electrical.grounding.highest_resistance", "ohm", "ground-path resistance model endpoint"},
+                {"grounding_rod", "groundingLowestResistance", "electrical.grounding.lowest_resistance", "ohm", "ground-path resistance model endpoint"},
+                {"fe_inverter", "feInverterControlVoltage", "electrical.fe_inverter.control_voltage", "V", "effective control-circuit configuration; not a universal conversion ratio"},
+                {"fe_inverter", "feInverterBufferSize", "electrical.fe_inverter.buffer_capacity", "FE", "effective FE buffer configuration"},
+                {"electric_pump", "electricPumpPower", "electrical.pump.power_setting", "W", "effective pump model configuration; load varies with operating state"},
+                {"electric_pump", "electricPumpMaxSpeed", "electrical.pump.maximum_speed_setting", "rpm", "effective pump model configuration"}
+        };
+        for (String[] setting : settings) {
+            ResourceLocation itemId = ResourceLocation.parse("powergrid:" + setting[0]);
+            if (!inScope.test(itemId) || !BuiltInRegistries.ITEM.containsKey(itemId)) {
+                continue;
+            }
+            Object value = normalized(MechanicRows.call(field(electricity, setting[1]), "get"));
+            addConfig(configsOut, "electricity", electricity, setting[1], setting[3]);
+            facts.add(MechanicRows.fact(id(), "item", itemId.toString(), setting[2], value, setting[3],
+                    Map.of("meaning", setting[4], "configuration", "effective loaded server setting"),
+                    CONFIG_CLASS + ".server().electricity." + setting[1] + ".get"));
+        }
+        String[][] globalSettings = {
+                {"overheating", null}, {"wireOverheating", null},
+                {"entityWireInteraction", null}, {"wireCutDamageCurrentThreshold", "A"},
+                {"entityCurrentDamageThreshold", "A"}, {"entityResistance", "ohm"},
+                {"motorDynamicResistance", null}, {"transformerMutualInductanceMultiplier", null},
+                {"forgeEnergyPerVolt", null}, {"forgeEnergyPerWatt", null}
+        };
+        for (String[] setting : globalSettings) {
+            addConfig(configsOut, "electricity", electricity, setting[0], setting[1]);
+        }
+    }
+
+    private void addSwitchThresholds(List<Map<String, ?>> facts, Predicate<ResourceLocation> inScope)
+            throws ReflectiveOperationException {
+        Class<?> switchClass = Class.forName(SWITCH_BLOCK);
+        for (String name : List.of("lv_switch", "mv_switch")) {
+            ResourceLocation itemId = ResourceLocation.parse("powergrid:" + name);
+            if (!inScope.test(itemId) || !BuiltInRegistries.ITEM.containsKey(itemId)
+                    || !BuiltInRegistries.BLOCK.containsKey(itemId)) {
+                continue;
+            }
+            Block block = BuiltInRegistries.BLOCK.get(itemId);
+            if (!switchClass.isInstance(block)) {
+                continue;
+            }
+            float threshold = ((Number) switchClass.getMethod("getMaxVoltage").invoke(block)).floatValue();
+            if (!Float.isFinite(threshold) || threshold <= 0) {
+                throw new IllegalStateException("Power Grid switch threshold is not positive: " + itemId);
+            }
+            facts.add(MechanicRows.fact(id(), "item", itemId.toString(),
+                    "electrical.switch.overvoltage_threshold", threshold, "V",
+                    Map.of("meaning", "switch overvoltage fault threshold; not a universal safe system voltage"),
+                    SWITCH_BLOCK + ".getMaxVoltage"));
+        }
+    }
+
+    private void addGaugeRanges(List<Map<String, ?>> facts, Predicate<ResourceLocation> inScope)
+            throws ReflectiveOperationException {
+        String[][] gauges = {
+                {"voltage_gauge", "VoltageGaugeBlockEntity", "V"},
+                {"current_gauge", "CurrentGaugeBlockEntity", "A"},
+                {"power_gauge", "PowerGaugeBlockEntity", "W"}
+        };
+        for (String[] gauge : gauges) {
+            ResourceLocation itemId = ResourceLocation.parse("powergrid:" + gauge[0]);
+            if (!inScope.test(itemId) || !BuiltInRegistries.ITEM.containsKey(itemId)) {
+                continue;
+            }
+            Class<?> gaugeClass = Class.forName("org.patryk3211.powergrid.electricity.gauge." + gauge[1]);
+            Field field = gaugeClass.getDeclaredField("MAX_VALUES");
+            field.setAccessible(true);
+            float[] values = (float[]) field.get(null);
+            if (values == null || values.length == 0) {
+                throw new IllegalStateException("Power Grid gauge has no selectable ranges: " + itemId);
+            }
+            for (int index = 0; index < values.length; index++) {
+                float value = values[index];
+                if (!Float.isFinite(value) || value <= 0) {
+                    throw new IllegalStateException("Power Grid gauge range is invalid: " + itemId);
+                }
+                facts.add(MechanicRows.fact(id(), "item", itemId.toString(),
+                        "electrical.gauge.selectable_full_scale_range_" + (index + 1), decimal(value), gauge[2],
+                        Map.of("selection_index", index,
+                                "meaning", "measurement full scale; not a safe input rating"),
+                        gaugeClass.getName() + ".MAX_VALUES[" + index + "]"));
+            }
+        }
+    }
+
     private void addConfig(List<Map<String, ?>> configs, String section, Object group,
                            String fieldName, String unit) throws ReflectiveOperationException {
         Object setting = field(group, fieldName);
         configs.add(AdapterRows.config(id(), "powergrid", "server", "powergrid.server." + section,
-                fieldName, MechanicRows.call(setting, "get"), unit,
+                fieldName, normalized(MechanicRows.call(setting, "get")), unit,
                 CONFIG_CLASS + ".server()." + section + "." + fieldName + ".get"));
     }
 
@@ -266,10 +389,14 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
         return Double.parseDouble(Float.toString(value.floatValue()));
     }
 
+    private Object normalized(Object value) {
+        return value instanceof Float ? decimal((Number) value) : value;
+    }
+
     private void addWire(List<Map<String, ?>> facts, ResourceLocation itemId, Object wire,
                          String method, String key, String unit) throws ReflectiveOperationException {
         facts.add(MechanicRows.fact(id(), "item", itemId.toString(), "electrical.wire." + key,
-                MechanicRows.call(wire, method), unit,
+                normalized(MechanicRows.call(wire, method)), unit,
                 Map.of("basis", "registered wire type"), WIRE_ENTRY + "." + method));
     }
 
@@ -277,7 +404,7 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                               String fieldName, String key, String unit) throws ReflectiveOperationException {
         Object setting = field(equipment, fieldName);
         facts.add(MechanicRows.fact(id(), "item", itemId.toString(), "electrical.meter." + key,
-                MechanicRows.call(setting, "get"), unit,
+                normalized(MechanicRows.call(setting, "get")), unit,
                 Map.of("meaning", "measurement range", "configuration", "effective server setting"),
                 CONFIG_CLASS + ".server().equipment." + fieldName + ".get"));
     }

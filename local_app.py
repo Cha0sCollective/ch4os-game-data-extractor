@@ -270,6 +270,7 @@ def handler_for(state: AppState):
                                             "jobs": state.knowledge.list_jobs(catalog.snapshot_id, mod_id),
                                             "findings": state.knowledge.list_findings(catalog.snapshot_id, mod_id,
                                                                                        args.get("status", "pending")),
+                                            "adapter_tasks": state.knowledge.list_adapter_tasks(catalog.snapshot_id, mod_id),
                                             "coverage": state.knowledge.mod_coverage(catalog.snapshot_id, mod_id, catalog.path)
                                             if mod_id else None})
                 if path.startswith("/api/research/jobs/"):
@@ -365,6 +366,12 @@ def handler_for(state: AppState):
                     return self._json(200, state.knowledge.review_finding(
                         catalog.snapshot_id, str(data.get("finding_id", "")),
                         str(data.get("decision", "")), catalog.path, str(data.get("note", ""))))
+                if path == "/api/research/resolve-task":
+                    catalog = self._catalog()
+                    finding_id = str(data.get("finding_id", ""))
+                    state.knowledge.resolve_adapter_task(catalog.snapshot_id, finding_id,
+                                                         str(data.get("resolution", "")))
+                    return self._json(200, {"finding_id": finding_id, "status": "resolved"})
                 return self._error(404, "not found")
             except (ValueError, OSError, json.JSONDecodeError) as exc:
                 return self._error(400, str(exc))

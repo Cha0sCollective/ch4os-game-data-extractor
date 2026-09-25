@@ -177,6 +177,17 @@ class LocalAppTests(unittest.TestCase):
                 self.assertEqual(len(get("/api/research?mod=example")["findings"]), 1)
                 post("/api/research/review", {"finding_id": finding["finding_id"], "decision": "accept"})
                 self.assertEqual(get("/api/research?mod=example")["findings"], [])
+                adapter_request = {**finding, "finding_id": "example:adapter_request",
+                                   "record_type": "adapter_request", "description": "Capture effective ore behavior"}
+                findings_path.write_text(json.dumps(adapter_request) + "\n", encoding="utf-8")
+                post("/api/research/submit", {"path": str(findings_path)})
+                self.assertEqual(get("/api/research?mod=example")["jobs"][0]["status"], "submitted")
+                post("/api/research/review", {"finding_id": adapter_request["finding_id"],
+                                              "decision": "accept"})
+                self.assertEqual(get("/api/research?mod=example")["adapter_tasks"][0]["status"], "open")
+                post("/api/research/resolve-task", {"finding_id": adapter_request["finding_id"],
+                                                     "resolution": "capture/example.zip: verified"})
+                self.assertEqual(get("/api/research?mod=example")["adapter_tasks"][0]["status"], "resolved")
                 self.assertEqual(get("/api/analysis")["counts"]["recipes"], 1)
                 self.assertEqual(post("/api/compare", {"baseline": str(database)})["counts"]["changed"], 0)
                 with urlopen(base + "/api/export?kind=items&format=csv&q=ore") as response:

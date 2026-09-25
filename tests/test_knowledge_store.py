@@ -8,6 +8,7 @@ import unittest
 from catalog import Catalog
 from game_data_db import import_capture
 from knowledge_store import KnowledgeStore
+from research_queue import prepare_jobs
 from test_game_data_db import capture
 
 
@@ -48,6 +49,31 @@ class KnowledgeStoreTests(unittest.TestCase):
             store = KnowledgeStore(root / "knowledge.sqlite")
             self.assertNotEqual(store.register_capture(first), store.register_capture(second))
 
+    def test_revalidation_skips_intervening_unreviewed_captures(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "capture.zip"
+            capture(source)
+            databases = [root / f"capture-{index}.sqlite" for index in range(3)]
+            for index, database in enumerate(databases):
+                import_capture(source, database)
+                with closing(sqlite3.connect(database)) as db, db:
+                    provenance = json.loads(db.execute("SELECT provenance_json FROM capture").fetchone()[0])
+                    provenance["generated_at_utc"] = f"2027-01-0{index + 1}T00:00:00Z"
+                    db.execute("UPDATE capture SET provenance_json=?,generated_at_utc=? WHERE id=1",
+                               (json.dumps(provenance), provenance["generated_at_utc"]))
+            store = KnowledgeStore(root / "knowledge.sqlite")
+            first = store.register_capture(databases[0])
+            with store.connect() as db:
+                db.execute("INSERT INTO coverage VALUES (?,?,?,?,?,?)",
+                           (first, "system", "example:power", "behavior", "verified", "Reviewed"))
+            store.register_capture(databases[1])
+            latest = store.register_capture(databases[2])
+            report = store.mod_coverage(latest, "example", databases[2])
+            self.assertEqual(report["revalidation"][0]["prior_snapshot_id"], first)
+            self.assertEqual(report["revalidation"][0]["status"], "pending")
+            self.assertEqual(store.mod_coverage(first, "example", databases[0])["revalidation"], [])
+
     def test_generic_item_relationships_include_incoming_edges(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)
@@ -77,6 +103,52 @@ class KnowledgeStoreTests(unittest.TestCase):
             report = store.mod_coverage(snapshot, "example", database)
             self.assertEqual(report["items_with_coverage"], 1)
             self.assertEqual(report["system_areas"][0]["status"], "unresolved")
+
+    def test_reviewed_coverage_can_close_a_gap_with_history(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, database = root / "capture.zip", root / "capture.sqlite"
+            capture(source, artifacts=True)
+            import_capture(source, database)
+            store = KnowledgeStore(root / "knowledge.sqlite")
+            _, jobs = prepare_jobs(database, store, "example")
+            job = jobs[0]
+            for finding_id, status in (("example:gap", "unresolved"), ("example:resolved", "verified")):
+                finding = {"format": "ch4os-research-finding-v1", "snapshot_id": job["snapshot_id"],
+                           "job_id": job["job_id"], "finding_id": finding_id,
+                           "record_type": "coverage", "subject_kind": "system",
+                           "subject_id": "example:power", "area": "operation", "status": status,
+                           "explanation": f"Reviewed {status}"}
+                store.submit_finding(finding)
+                store.review_finding(job["snapshot_id"], finding_id, "accept", database)
+            subject = store.read_subject(job["snapshot_id"], "system", "example:power")
+            self.assertEqual(subject["coverage"][0]["status"], "verified")
+            self.assertEqual([row["previous_status"] for row in subject["coverage_history"]],
+                             [None, "unresolved"])
+
+    def test_reviewed_adapter_request_becomes_traceable_task(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, database = root / "capture.zip", root / "capture.sqlite"
+            capture(source, artifacts=True)
+            import_capture(source, database)
+            store = KnowledgeStore(root / "knowledge.sqlite")
+            _, jobs = prepare_jobs(database, store, "example")
+            job = jobs[0]
+            finding = {"format": "ch4os-research-finding-v1", "snapshot_id": job["snapshot_id"],
+                       "job_id": job["job_id"], "finding_id": "example:adapter_request",
+                       "record_type": "adapter_request", "subject_kind": "item",
+                       "subject_id": "example:ore", "description": "Capture effective ore behavior"}
+            store.submit_finding(finding)
+            store.review_finding(job["snapshot_id"], finding["finding_id"], "accept", database)
+            tasks = store.list_adapter_tasks(job["snapshot_id"], "example")
+            self.assertEqual(len(tasks), 1)
+            self.assertEqual(tasks[0]["status"], "open")
+            with self.assertRaises(ValueError):
+                store.resolve_adapter_task(job["snapshot_id"], finding["finding_id"], " ")
+            store.resolve_adapter_task(job["snapshot_id"], finding["finding_id"],
+                                       "capture/example-fresh.zip: verified effective behavior")
+            self.assertEqual(store.list_adapter_tasks(job["snapshot_id"], "example")[0]["status"], "resolved")
 
 
 if __name__ == "__main__":

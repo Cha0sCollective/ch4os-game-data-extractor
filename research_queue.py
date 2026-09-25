@@ -176,6 +176,11 @@ def main(argv: list[str] | None = None) -> int:
     listing = commands.add_parser("list", help="List jobs and findings")
     listing.add_argument("--mod", default="")
     listing.add_argument("--status", choices=("pending", "accepted", "rejected", "all"), default="pending")
+    tasks = commands.add_parser("tasks", help="List reviewed adapter tasks")
+    tasks.add_argument("--mod", default="")
+    resolve = commands.add_parser("resolve-task", help="Record how a reviewed adapter task was addressed")
+    resolve.add_argument("finding_id")
+    resolve.add_argument("--resolution", required=True, help="Capture or test evidence for the completed change")
     args = parser.parse_args(argv)
     store = KnowledgeStore(args.knowledge)
     snapshot_id = store.register_capture(args.database)
@@ -185,6 +190,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"submitted": submit_file(store, args.input)}))
     elif args.command == "review":
         print(json.dumps(store.review_finding(snapshot_id, args.finding_id, args.decision, args.database, args.note)))
+    elif args.command == "tasks":
+        print(json.dumps({"adapter_tasks": store.list_adapter_tasks(snapshot_id, args.mod)}, indent=2))
+    elif args.command == "resolve-task":
+        store.resolve_adapter_task(snapshot_id, args.finding_id, args.resolution)
+        print(json.dumps({"finding_id": args.finding_id, "status": "resolved"}))
     else:
         print(json.dumps({"jobs": store.list_jobs(snapshot_id, args.mod),
                           "findings": store.list_findings(snapshot_id, args.mod, args.status)}, indent=2))

@@ -24,6 +24,8 @@ python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite 
 python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite submit findings.jsonl
 python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite list --mod powergrid
 python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite review powergrid:battery_capacity --decision accept
+python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite tasks --mod powergrid
+python research_queue.py --database capture.sqlite --knowledge knowledge.sqlite resolve-task powergrid:battery_adapter --resolution "capture/stage29-powergrid.zip: battery specifications verified"
 ```
 
 To view findings reviewed through the CLI in the browser, open the same
@@ -63,3 +65,9 @@ rejected recipe resource cannot become an active recipe reference because only
 accepted loaded recipe IDs exist in the capture database. Accepted adapter
 requests remain visible in the reviewed queue until an extractor change and
 fresh capture address them.
+Coverage decisions are replaceable within a snapshot: a reviewed `verified`
+finding can close an earlier `unresolved` area, and the transition is retained
+in `coverage_history`. A later capture starts a different snapshot and requires
+fresh review. Accepted `adapter_request` findings create open adapter tasks.
+Resolve a task only after recording the capture or test that demonstrates the
+new adapter behavior; the task history stays in the knowledge database.

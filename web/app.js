@@ -487,7 +487,7 @@ async function renderResearch(renderId) {
     if (renderId !== state.renderRequest) return;
     const target = $("#results"); target.replaceChildren();
     $("#pagination").hidden = true;
-    $("#result-count").textContent = `${count(data.findings.length)} pending findings · ${count(data.jobs.length)} jobs`;
+    $("#result-count").textContent = `${count(data.findings.length)} pending findings · ${count((data.adapter_tasks || []).filter(task => task.status === "open").length)} adapter tasks · ${count(data.jobs.length)} jobs`;
     $("#page-label").textContent = state.mod || "All mods";
     if (data.coverage) {
       const coverage = append(node("div", "coverage-grid"),
@@ -537,6 +537,38 @@ async function renderResearch(renderId) {
     }
     target.append(section(`Pending findings · ${count(data.findings.length)}`,
       data.findings.length ? findings : node("p", "detail-subtitle", "No agent findings await review.")));
+    const tasks = node("div", "results");
+    for (const task of data.adapter_tasks || []) {
+      const card = append(node("button", "result-card"),
+        node("div", "result-title", `${task.mod_id} · ${task.subject_id}`),
+        node("div", "result-id", task.description),
+        append(node("div", "result-foot"), chip(task.status, task.status === "open" ? "warn" : "teal")));
+      card.type = "button";
+      card.addEventListener("click", () => {
+        const detail = append(node("div"), append(node("div", "detail-head"),
+          node("div", "eyebrow", "REVIEWED ADAPTER TASK"), node("h2", "", task.subject_id),
+          node("div", "detail-id", task.finding_id)),
+          section("Capture gap", node("p", "detail-subtitle", task.description)));
+        if (task.resolution) detail.append(section("Resolution", node("p", "detail-subtitle", task.resolution)));
+        if (task.status === "open") {
+          const button = node("button", "outline-button", "Record resolution");
+          button.type = "button";
+          button.addEventListener("click", async () => {
+            const resolution = window.prompt("Capture or test evidence for this completed adapter change:");
+            if (!resolution?.trim()) return;
+            try {
+              await post("/api/research/resolve-task", {finding_id: task.finding_id, resolution: resolution.trim()});
+              toast("Adapter task resolved"); render();
+            } catch (error) { toast(error.message); }
+          });
+          detail.append(button);
+        }
+        $("#detail-panel").replaceChildren(detail);
+      });
+      tasks.append(card);
+    }
+    target.append(section(`Adapter tasks · ${count((data.adapter_tasks || []).length)}`,
+      tasks.childElementCount ? tasks : node("p", "detail-subtitle", "No reviewed adapter requests.")));
     const jobs = node("div", "results");
     for (const job of data.jobs) {
       const card = append(node("button", "result-card"), node("div", "result-title", `${job.mod_id} · ${job.subsystem}`),
