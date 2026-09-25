@@ -31,8 +31,11 @@ The Research view prepares bounded source-analysis packets and reviews proposed
 facts into a persistent, snapshot-scoped GDE knowledge database. Item pages
 show all captured relationships and accepted source-derived claims with their
 evidence labels. See [reviewed research workflow](docs/research-workflow.md).
-The current Power Grid 0.6.1 pilot and its remaining guide-readiness tests are
-recorded in [the stage-33 field report](docs/field-reports/powergrid-pilot-stage33.md).
+The current Power Grid 0.6.1 pilot is recorded in
+[the stage-33 field report](docs/field-reports/powergrid-pilot-stage33.md).
+Its [source-led follow-up](docs/field-reports/powergrid-source-followup.md)
+and [current-pack guide draft](docs/guides/power-grid-0.6.1-current-pack.md)
+use the exact installed JAR and effective captured settings.
 Its Analysis view and `recipe_analysis.py` provide conservative recipe conflict
 findings and baseline-to-current snapshot comparison; see [recipe analysis](docs/recipe-analysis.md).
 

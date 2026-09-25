@@ -18,25 +18,26 @@ snapshot. The handbook repository was not changed.
 
 ## Gaps investigated
 
-| Area | New reviewed evidence | Remaining guide-readiness test |
+| Area | New reviewed evidence | Next source-analysis work |
 | --- | --- | --- |
-| Storage | Charge-dependent battery voltage and resistance, energy updates, multiblock capacity conditions | Measure a representative charging circuit and thermal behavior; no universal safe charging voltage/current was found. |
-| Generation and conversion | Generator EMF and winding model, motor load, transformer coupling, FE inverter control; effective rotor, field and core settings | Observe assembled generator/transformer parameters and loaded output in placed systems. |
-| Wiring | Type-specific cooling factors; heating formula, 175°C default overheat state and visual consequences | Test wire cutting, entity contact and connector topology in world. The inspected overheat path itself does not remove the wire. |
-| Measurement | 5-block multimeter probe setting, voltage/current probe modes, thermometer, plotter and modular-display paths | Check display scaling and plotter timing on placed devices. |
-| Control and protection | Contactor switching added to earlier fuse, breaker and LV/MV switch evidence | Exercise relay, redstone and HV-switch combinations in circuits. |
-| Circuit design | All 26 loaded component mappings; design-table schematic writing and board assembly paths | Build and run a representative custom circuit end to end. |
-| Portable equipment | Effective tool speed settings and all four boostable action paths | Test projectile effect and low-charge supply in world. |
-| Integrations | Installed CC, Create, Simulated and Sable bridge paths distinguished from optional absent mods | Exercise per-device API and Sable/Simulated use cases on the loaded server. |
+| Storage | Charge-dependent battery voltage and resistance, energy updates, multiblock capacity conditions | Trace charging and thermal-control branches; no universal safe charging voltage/current was found. |
+| Generation and conversion | Generator EMF and winding model, motor load, transformer coupling, FE inverter control; effective rotor, field and core settings | Trace the remaining assembly controls and express loaded output as conditional. |
+| Wiring | Type-specific cooling factors; heating formula, 175°C default overheat state and visual consequences | Trace cutting, entity contact and connector topology. The inspected overheat path itself does not remove the wire. |
+| Measurement | 5-block multimeter probe setting, voltage/current probe modes, thermometer, plotter and modular-display paths | Trace display scaling and plotter timing. |
+| Control and protection | Contactor switching added to earlier fuse, breaker and LV/MV switch evidence | Trace relay, redstone and HV-switch control paths. |
+| Circuit design | All 26 loaded component mappings; design-table schematic writing and board assembly paths | Trace board baking, execution and cooling. |
+| Portable equipment | Effective tool speed settings and all four boostable action paths | Trace zapper projectile and low-charge supply behavior. |
+| Integrations | Installed CC, Create, Simulated and Sable bridge paths distinguished from optional absent mods | Trace per-device APIs and loaded bridge behavior. |
 
-The knowledge database contains 185 accepted stage-33 findings: 38 claims,
+At the stage-33 checkpoint, the knowledge database contained 185 accepted findings: 38 claims,
 10 relationships, 4 formulas, 132 coverage decisions and one adapter task.
 All 116 Power Grid item identities are covered. The eight focused areas above
 now have verified, artifact-backed review slices. Their broader
-`full_gameplay_analysis` statuses remain **unresolved** until the named
-placed-device tests pass; the viewer shows those specific reasons. The one
-open task concerns live assembly parameters unavailable to a registry-only
-startup capture. Stage-32 adapter tasks were closed with stage-33 evidence.
+`full_gameplay_analysis` statuses remain **unresolved** while the named code
+paths are analyzed. Source-follow-up findings supersede the older coverage
+wording in the live viewer. The assembly-instrumentation task has been closed
+as unnecessary for this source-led workflow. Stage-32 adapter tasks were
+closed with stage-33 evidence.
 
 The stage-32 → stage-33 revalidation is explicitly marked reviewed. The
 revalidation note records the unchanged installed artifact, matching 116-item
@@ -53,8 +54,7 @@ recipe table. The viewer at `http://127.0.0.1:8766/` serves this snapshot and
 shows reviewed revalidation and item relationships. Python tests (32),
 JavaScript syntax check, safety verification and offline Gradle build pass.
 
-The next substage is a disposable-server placed-device fixture for the eight
-remaining full-analysis areas. It should record live state and interaction
-results as test evidence, then close only the coverage areas its assertions
-actually establish. Handbook work remains behind the Power Grid GDE review
-gate.
+The next substage reads the eight remaining code paths from the exact installed
+artifact and turns reviewed facts into a Power Grid guide. No live probe is
+part of this workflow. The handbook repository remains behind the Power Grid
+GDE review gate.
