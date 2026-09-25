@@ -126,6 +126,8 @@ CREATE TABLE IF NOT EXISTS revalidation (
     prior_snapshot_id TEXT NOT NULL REFERENCES snapshots(id),
     reason TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed')),
+    review_note TEXT,
+    reviewed_at_utc TEXT,
     PRIMARY KEY (snapshot_id, mod_id, prior_snapshot_id)
 );
 CREATE TABLE IF NOT EXISTS research_jobs (
@@ -191,6 +193,11 @@ class KnowledgeStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript(SCHEMA)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(revalidation)")}
+            if "review_note" not in columns:
+                db.execute("ALTER TABLE revalidation ADD COLUMN review_note TEXT")
+            if "reviewed_at_utc" not in columns:
+                db.execute("ALTER TABLE revalidation ADD COLUMN reviewed_at_utc TEXT")
 
     @contextmanager
     def connect(self):
@@ -231,7 +238,9 @@ class KnowledgeStore:
                     continue
                 prior_id, prior_version = latest_reviewed[mod_id]
                 reason = "mod_version_changed" if version != prior_version else "pack_snapshot_changed"
-                db.execute("INSERT OR IGNORE INTO revalidation VALUES (?, ?, ?, ?, 'pending')",
+                db.execute("INSERT OR IGNORE INTO revalidation "
+                           "(snapshot_id,mod_id,prior_snapshot_id,reason,status) "
+                           "VALUES (?, ?, ?, ?, 'pending')",
                            (snapshot_id, mod_id, prior_id, reason))
             db.commit()
         return snapshot_id
@@ -288,7 +297,8 @@ class KnowledgeStore:
             covered = db.execute("SELECT COUNT(DISTINCT subject_id) FROM coverage WHERE snapshot_id=? "
                                  "AND subject_kind='item' AND subject_id LIKE ?", (snapshot_id, mod_id + ":%" )).fetchone()[0]
             revalidation = [dict(row) for row in db.execute(
-                "SELECT prior_snapshot_id,reason,status FROM revalidation WHERE snapshot_id=? AND mod_id=?",
+                "SELECT prior_snapshot_id,reason,status,review_note,reviewed_at_utc "
+                "FROM revalidation WHERE snapshot_id=? AND mod_id=?",
                 (snapshot_id, mod_id))]
         return {"mod_id": mod_id, "item_count": len(items), "items_with_coverage": covered,
                 "items_without_coverage": len(items) - covered, "areas": grouped,
@@ -389,6 +399,32 @@ class KnowledgeStore:
                                  (resolution, snapshot_id, finding_id)).rowcount
             if not changed:
                 raise ValueError("open adapter task not found")
+
+    def review_revalidation(self, snapshot_id: str, mod_id: str, note: str) -> None:
+        if not isinstance(note, str) or not note.strip():
+            raise ValueError("revalidation needs a review note with evidence")
+        with self.connect() as db:
+            outstanding = db.execute(
+                "SELECT COUNT(*) FROM findings f JOIN research_jobs j "
+                "ON j.snapshot_id=f.snapshot_id AND j.id=f.job_id "
+                "WHERE f.snapshot_id=? AND j.mod_id=? AND f.status='pending'",
+                (snapshot_id, mod_id)).fetchone()[0]
+            if outstanding:
+                raise ValueError("pending findings must be reviewed before revalidation closes")
+            accepted = db.execute(
+                "SELECT COUNT(*) FROM findings f JOIN research_jobs j "
+                "ON j.snapshot_id=f.snapshot_id AND j.id=f.job_id "
+                "WHERE f.snapshot_id=? AND j.mod_id=? AND f.status='accepted'",
+                (snapshot_id, mod_id)).fetchone()[0]
+            if not accepted:
+                raise ValueError("revalidation needs accepted findings for this snapshot")
+            changed = db.execute(
+                "UPDATE revalidation SET status='reviewed',review_note=?,"
+                "reviewed_at_utc=strftime('%Y-%m-%dT%H:%M:%fZ','now') "
+                "WHERE snapshot_id=? AND mod_id=? AND status='pending'",
+                (note.strip(), snapshot_id, mod_id)).rowcount
+            if not changed:
+                raise ValueError("pending revalidation not found")
 
     def review_finding(self, snapshot_id: str, finding_id: str, decision: str,
                        capture_db: Path, note: str = "") -> dict:

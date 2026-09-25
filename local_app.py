@@ -372,6 +372,12 @@ def handler_for(state: AppState):
                     state.knowledge.resolve_adapter_task(catalog.snapshot_id, finding_id,
                                                          str(data.get("resolution", "")))
                     return self._json(200, {"finding_id": finding_id, "status": "resolved"})
+                if path == "/api/research/review-revalidation":
+                    catalog = self._catalog()
+                    mod_id = str(data.get("mod_id", ""))
+                    state.knowledge.review_revalidation(catalog.snapshot_id, mod_id,
+                                                        str(data.get("note", "")))
+                    return self._json(200, {"mod_id": mod_id, "status": "reviewed"})
                 return self._error(404, "not found")
             except (ValueError, OSError, json.JSONDecodeError) as exc:
                 return self._error(400, str(exc))

@@ -502,8 +502,27 @@ async function renderResearch(renderId) {
         node("div", "result-id", entry.explanation),
         append(node("div", "result-foot"), chip(entry.status, entry.status === "unresolved" ? "warn" : "teal"))));
       if (systems.childElementCount) target.append(section("Gameplay system coverage", systems));
-      for (const entry of data.coverage.revalidation || []) target.append(node("p", "muted-note",
-        `Revalidate ${state.mod}: ${entry.reason.replaceAll("_", " ")} · ${entry.status}`));
+      for (const entry of data.coverage.revalidation || []) {
+        const card = append(node("div", "result-card"),
+          node("div", "result-title", `Snapshot review · ${state.mod}`),
+          node("div", "result-id", `Prior snapshot ${entry.prior_snapshot_id} · ${entry.reason.replaceAll("_", " ")}`),
+          append(node("div", "result-foot"), chip(entry.status, entry.status === "pending" ? "warn" : "teal")));
+        if (entry.review_note) card.append(node("p", "muted-note", entry.review_note));
+        if (entry.status === "pending") {
+          const button = node("button", "outline-button", "Record revalidation review");
+          button.type = "button";
+          button.addEventListener("click", async () => {
+            const note = window.prompt("Evidence and comparison used to review this snapshot:");
+            if (!note?.trim()) return;
+            try {
+              await post("/api/research/review-revalidation", {mod_id: state.mod, note: note.trim()});
+              toast("Snapshot revalidation reviewed"); render();
+            } catch (error) { toast(error.message); }
+          });
+          card.append(button);
+        }
+        target.append(card);
+      }
     }
     const findings = node("div", "results");
     for (const entry of data.findings) {

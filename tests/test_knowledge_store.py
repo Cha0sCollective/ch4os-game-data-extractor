@@ -74,6 +74,45 @@ class KnowledgeStoreTests(unittest.TestCase):
             self.assertEqual(report["revalidation"][0]["status"], "pending")
             self.assertEqual(store.mod_coverage(first, "example", databases[0])["revalidation"], [])
 
+    def test_revalidation_requires_reviewed_findings_and_records_evidence(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "capture.zip"
+            capture(source, artifacts=True)
+            first_db, second_db = root / "first.sqlite", root / "second.sqlite"
+            import_capture(source, first_db)
+            import_capture(source, second_db)
+            with closing(sqlite3.connect(second_db)) as db, db:
+                provenance = json.loads(db.execute("SELECT provenance_json FROM capture").fetchone()[0])
+                provenance["generated_at_utc"] = "2027-02-01T00:00:00Z"
+                db.execute("UPDATE capture SET provenance_json=?,generated_at_utc=? WHERE id=1",
+                           (json.dumps(provenance), provenance["generated_at_utc"]))
+            store = KnowledgeStore(root / "knowledge.sqlite")
+            first = store.register_capture(first_db)
+            with store.connect() as db:
+                db.execute("INSERT INTO coverage VALUES (?,?,?,?,?,?)",
+                           (first, "item", "example:ore", "registry_identity", "verified", "Reviewed"))
+            second = store.register_capture(second_db)
+            _, jobs = prepare_jobs(second_db, store, "example")
+            with self.assertRaises(ValueError):
+                store.review_revalidation(second, "example", " ")
+            with self.assertRaises(ValueError):
+                store.review_revalidation(second, "example", "Compared captures")
+            finding = {"format": "ch4os-research-finding-v1", "snapshot_id": second,
+                       "job_id": jobs[0]["job_id"], "finding_id": "example:rechecked",
+                       "record_type": "coverage", "subject_kind": "item",
+                       "subject_id": "example:ore", "area": "registry_identity",
+                       "status": "verified", "explanation": "Checked new capture"}
+            store.submit_finding(finding)
+            with self.assertRaises(ValueError):
+                store.review_revalidation(second, "example", "Compared captures")
+            store.review_finding(second, finding["finding_id"], "accept", second_db)
+            store.review_revalidation(second, "example", "Unchanged artifact and registry verified")
+            reviewed = store.mod_coverage(second, "example", second_db)["revalidation"][0]
+            self.assertEqual(reviewed["status"], "reviewed")
+            self.assertEqual(reviewed["review_note"], "Unchanged artifact and registry verified")
+            self.assertIsNotNone(reviewed["reviewed_at_utc"])
+
     def test_generic_item_relationships_include_incoming_edges(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)

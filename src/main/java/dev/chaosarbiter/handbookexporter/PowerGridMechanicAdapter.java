@@ -4,13 +4,18 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Predicate;
 
 /** Captures loaded Power Grid specifications without a Power Grid build dependency. */
@@ -23,6 +28,8 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
     private static final String BATTERY_UTILS = "org.patryk3211.powergrid.equipment.portablebattery.BatteryUtils";
     private static final String SWITCH_BLOCK = "org.patryk3211.powergrid.electricity.electricswitch.SwitchBlock";
     private static final ResourceLocation WIRE_REGISTRY = ResourceLocation.parse("powergrid:wire_types");
+    private static final ResourceLocation CIRCUIT_COMPONENTS = ResourceLocation.parse("powergrid:components");
+    private static final ResourceLocation CIRCUIT_COMPONENT_ITEMS = ResourceLocation.parse("powergrid:component_items");
 
     @Override
     public String id() {
@@ -60,6 +67,7 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                             addWire(facts, itemId, wire, "maximumLength", "maximum_length", "blocks");
                             addWire(facts, itemId, wire, "itemsPerMeter", "items_per_meter", "items/block");
                             addWire(facts, itemId, wire, "thermalMass", "thermal_mass", null);
+                            addWire(facts, itemId, wire, "dissipationFactor", "dissipation_factor", null);
                             addWire(facts, itemId, wire, "insulated", "insulated", null);
                         } catch (ReflectiveOperationException exception) {
                             throw new IllegalStateException("Power Grid wire lookup failed for " + itemId, exception);
@@ -73,6 +81,12 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                 Object equipment = field(root, "equipment");
                 addEquipment(facts, multimeter, equipment, "multimeterVoltage", "maximum_voltage", "V");
                 addEquipment(facts, multimeter, equipment, "multimeterCurrent", "maximum_current", "A");
+                Object distance = field(equipment, "multimeterDistance");
+                facts.add(MechanicRows.fact(id(), "item", multimeter.toString(),
+                        "electrical.meter.maximum_probe_distance", normalized(MechanicRows.call(distance, "get")),
+                        "blocks", Map.of("meaning", "effective connected-probe distance setting"),
+                        CONFIG_CLASS + ".server().equipment.multimeterDistance.get"));
+                addConfig(configsOut, "equipment", equipment, "multimeterDistance", "blocks");
             }
             try {
                 addBatteries(facts, configsOut, definitions, relations, inScope);
@@ -98,6 +112,13 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                         "error_message", String.valueOf(exception.getMessage()), "row_count", 0));
             }
             try {
+                addKineticSystemSettings(facts, configsOut, inScope);
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException exception) {
+                diagnostics.add(Map.of("subsystem", "mechanic_adapter:powergrid:kinetics",
+                        "status", "partial", "error_class", exception.getClass().getName(),
+                        "error_message", String.valueOf(exception.getMessage()), "row_count", 0));
+            }
+            try {
                 addSwitchThresholds(facts, inScope);
             } catch (ReflectiveOperationException | LinkageError | RuntimeException exception) {
                 diagnostics.add(Map.of("subsystem", "mechanic_adapter:powergrid:switches",
@@ -108,6 +129,13 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                 addGaugeRanges(facts, inScope);
             } catch (ReflectiveOperationException | LinkageError | RuntimeException exception) {
                 diagnostics.add(Map.of("subsystem", "mechanic_adapter:powergrid:gauges",
+                        "status", "partial", "error_class", exception.getClass().getName(),
+                        "error_message", String.valueOf(exception.getMessage()), "row_count", 0));
+            }
+            try {
+                addCircuitComponents(server, definitions, relations, inScope);
+            } catch (ReflectiveOperationException | LinkageError | RuntimeException exception) {
+                diagnostics.add(Map.of("subsystem", "mechanic_adapter:powergrid:circuit_components",
                         "status", "partial", "error_class", exception.getClass().getName(),
                         "error_message", String.valueOf(exception.getMessage()), "row_count", 0));
             }
@@ -265,6 +293,23 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                     configuredCost, "internal charge units/action", conditions,
                     CONFIG_CLASS + ".server().equipment." + tool[1] + ".get"));
         }
+        String[][] speedSettings = {
+                {"portable_drill", "drillMineSpeedBase", "base_mining_speed_setting"},
+                {"portable_drill", "drillMineSpeedBulk", "bulk_mining_speed_setting"},
+                {"portable_saw", "sawMineSpeed", "mining_speed_setting"}
+        };
+        for (String[] setting : speedSettings) {
+            ResourceLocation toolId = ResourceLocation.parse("powergrid:" + setting[0]);
+            if (!inScope.test(toolId) || !BuiltInRegistries.ITEM.containsKey(toolId)) {
+                continue;
+            }
+            Object value = normalized(MechanicRows.call(field(equipment, setting[1]), "get"));
+            addConfig(configsOut, "equipment", equipment, setting[1], null);
+            facts.add(MechanicRows.fact(id(), "item", toolId.toString(),
+                    "electrical.portable_tool." + setting[2], value, null,
+                    Map.of("meaning", "effective configured mining performance parameter; action-specific behavior requires artifact review"),
+                    CONFIG_CLASS + ".server().equipment." + setting[1] + ".get"));
+        }
     }
 
     private void addElectricalSystemSettings(List<Map<String, ?>> facts, List<Map<String, ?>> configsOut,
@@ -284,6 +329,7 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                 {"grounding_rod", "groundingHighestResistance", "electrical.grounding.highest_resistance", "ohm", "ground-path resistance model endpoint"},
                 {"grounding_rod", "groundingLowestResistance", "electrical.grounding.lowest_resistance", "ohm", "ground-path resistance model endpoint"},
                 {"fe_inverter", "feInverterControlVoltage", "electrical.fe_inverter.control_voltage", "V", "effective control-circuit configuration; not a universal conversion ratio"},
+                {"fe_inverter", "feInverterControlCapacitance", "electrical.fe_inverter.control_capacitance", "F", "effective control capacitor configuration"},
                 {"fe_inverter", "feInverterBufferSize", "electrical.fe_inverter.buffer_capacity", "FE", "effective FE buffer configuration"},
                 {"electric_pump", "electricPumpPower", "electrical.pump.power_setting", "W", "effective pump model configuration; load varies with operating state"},
                 {"electric_pump", "electricPumpMaxSpeed", "electrical.pump.maximum_speed_setting", "rpm", "effective pump model configuration"}
@@ -304,11 +350,41 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                 {"entityWireInteraction", null}, {"wireCutDamageCurrentThreshold", "A"},
                 {"entityCurrentDamageThreshold", "A"}, {"entityResistance", "ohm"},
                 {"motorDynamicResistance", null}, {"transformerMutualInductanceMultiplier", null},
+                {"smallCoreAl", null}, {"smallCoreK", null},
+                {"mediumCoreAl", null}, {"mediumCoreK", null},
+                {"hvSwitchSparkExtinguishRPMFactor", null},
+                {"hvSwitchSparkMinimumCurrent", "A"}, {"hvSwitchSparkPotentialFactor", null},
                 {"forgeEnergyPerVolt", null}, {"forgeEnergyPerWatt", null}
         };
         for (String[] setting : globalSettings) {
             addConfig(configsOut, "electricity", electricity, setting[0], setting[1]);
         }
+    }
+
+    private void addKineticSystemSettings(List<Map<String, ?>> facts, List<Map<String, ?>> configsOut,
+                                          Predicate<ResourceLocation> inScope)
+            throws ReflectiveOperationException {
+        Object kinetics = field(Class.forName(CONFIG_CLASS).getMethod("server").invoke(null), "kinetics");
+        Object generator = field(kinetics, "generatorControls");
+        String[][] generatorSettings = {
+                {"rotorRPMMax", "rpm", "maximum_rotor_rpm_setting"},
+                {"rotorAssemblyMaxSize", "blocks", "maximum_rotor_assembly_size_setting"},
+                {"windingCoilConstant", null, "winding_coil_constant"},
+                {"fieldSaturationCurrent", "A", "field_saturation_current_setting"},
+                {"dangerousGenerators", null, "dangerous_generators_enabled"}
+        };
+        for (String[] setting : generatorSettings) {
+            addConfig(configsOut, "kinetics.generatorControls", generator, setting[0], setting[1]);
+            ResourceLocation housing = ResourceLocation.parse("powergrid:generator_housing");
+            if (inScope.test(housing) && BuiltInRegistries.ITEM.containsKey(housing)) {
+                facts.add(MechanicRows.fact(id(), "item", housing.toString(),
+                        "electrical.generator." + setting[2],
+                        normalized(MechanicRows.call(field(generator, setting[0]), "get")), setting[1],
+                        Map.of("meaning", "effective assembly or electrical-model setting; actual generator output is dynamic"),
+                        CONFIG_CLASS + ".server().kinetics.generatorControls." + setting[0] + ".get"));
+            }
+        }
+        addConfig(configsOut, "kinetics", kinetics, "torqueForStress", null);
     }
 
     private void addSwitchThresholds(List<Map<String, ?>> facts, Predicate<ResourceLocation> inScope)
@@ -364,6 +440,60 @@ final class PowerGridMechanicAdapter implements MechanicAdapter {
                         Map.of("selection_index", index,
                                 "meaning", "measurement full scale; not a safe input rating"),
                         gaugeClass.getName() + ".MAX_VALUES[" + index + "]"));
+            }
+        }
+    }
+
+    private void addCircuitComponents(MinecraftServer server, List<Map<String, ?>> definitions,
+                                      List<Map<String, ?>> relations, Predicate<ResourceLocation> inScope)
+            throws ReflectiveOperationException {
+        Registry<?> components = server.registryAccess().registries()
+                .filter(entry -> entry.key().location().equals(CIRCUIT_COMPONENTS))
+                .map(entry -> entry.value()).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Power Grid component registry not found"));
+        Registry<?> itemEntries = server.registryAccess().registries()
+                .filter(entry -> entry.key().location().equals(CIRCUIT_COMPONENT_ITEMS))
+                .map(entry -> entry.value()).findFirst()
+                .orElseThrow(() -> new IllegalStateException("Power Grid component item registry not found"));
+        ResourceLocation designTable = ResourceLocation.parse("powergrid:circuit_design_table");
+        for (Map.Entry<? extends net.minecraft.resources.ResourceKey<?>, ?> entry : itemEntries.entrySet()) {
+            ResourceLocation componentId = entry.getKey().location();
+            if (!inScope.test(componentId)) {
+                continue;
+            }
+            Object component = components.get(componentId);
+            if (component == null) {
+                throw new IllegalStateException("Circuit component item has no component: " + componentId);
+            }
+            Object itemEntry = entry.getValue();
+            Item item = (Item) MechanicRows.call(itemEntry, "item");
+            ResourceLocation itemId = item == Items.AIR ? null : BuiltInRegistries.ITEM.getKey(item);
+            Optional<?> tag = (Optional<?>) MechanicRows.call(itemEntry, "tag");
+            ResourceLocation tagId = tag.isPresent() ? ((TagKey<?>) tag.get()).location() : null;
+            Map<String, Object> attributes = new LinkedHashMap<>();
+            attributes.put("implementation_class", component.getClass().getName());
+            attributes.put("ingredient_item", itemId == null ? null : itemId.toString());
+            attributes.put("ingredient_tag", tagId == null ? null : tagId.toString());
+            attributes.put("mapping_status", itemId == null && tagId == null ? "unresolved" : "captured");
+            definitions.add(AdapterRows.definition(id(), "circuit_component", componentId.toString(),
+                    attributes, Map.of("basis", "loaded component and component-item registries"),
+                    null, null, null, "ComponentRegistry.ITEM_REGISTRY_KEY/REGISTRY_KEY"));
+            if (itemId != null && BuiltInRegistries.ITEM.containsKey(itemId) && inScope.test(itemId)) {
+                relations.add(AdapterRows.relation(id(), "item", itemId.toString(),
+                        "provides_circuit_component", "circuit_component", componentId.toString(),
+                        Map.of(), Map.of("mapping", "direct registered item"), "ComponentItemEntry.item"));
+            }
+            if (tagId != null) {
+                relations.add(AdapterRows.relation(id(), "tag", tagId.toString(),
+                        "provides_circuit_component", "circuit_component", componentId.toString(),
+                        Map.of(), Map.of("mapping", "registered item tag"), "ComponentItemEntry.tag"));
+            }
+            if (inScope.test(designTable) && BuiltInRegistries.ITEM.containsKey(designTable)) {
+                relations.add(AdapterRows.relation(id(), "item", designTable.toString(),
+                        "supports_circuit_component", "circuit_component", componentId.toString(),
+                        Map.of(), Map.of("ingredient_item", itemId == null ? "unknown" : itemId.toString(),
+                                "ingredient_tag", tagId == null ? "none" : tagId.toString()),
+                        "CircuitDesignTableBlockEntity/ComponentRegistry"));
             }
         }
     }

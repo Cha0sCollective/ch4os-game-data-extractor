@@ -181,6 +181,9 @@ def main(argv: list[str] | None = None) -> int:
     resolve = commands.add_parser("resolve-task", help="Record how a reviewed adapter task was addressed")
     resolve.add_argument("finding_id")
     resolve.add_argument("--resolution", required=True, help="Capture or test evidence for the completed change")
+    revalidation = commands.add_parser("review-revalidation", help="Close a snapshot revalidation after findings review")
+    revalidation.add_argument("--mod", required=True)
+    revalidation.add_argument("--note", required=True, help="Evidence and comparison used for this review")
     args = parser.parse_args(argv)
     store = KnowledgeStore(args.knowledge)
     snapshot_id = store.register_capture(args.database)
@@ -195,6 +198,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "resolve-task":
         store.resolve_adapter_task(snapshot_id, args.finding_id, args.resolution)
         print(json.dumps({"finding_id": args.finding_id, "status": "resolved"}))
+    elif args.command == "review-revalidation":
+        store.review_revalidation(snapshot_id, args.mod, args.note)
+        print(json.dumps({"mod_id": args.mod, "status": "reviewed"}))
     else:
         print(json.dumps({"jobs": store.list_jobs(snapshot_id, args.mod),
                           "findings": store.list_findings(snapshot_id, args.mod, args.status)}, indent=2))
