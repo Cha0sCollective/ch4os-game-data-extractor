@@ -36,6 +36,8 @@ The current Power Grid 0.6.1 pilot is recorded in
 Its [source-led follow-up](docs/field-reports/powergrid-source-followup.md)
 and [current-pack guide draft](docs/guides/power-grid-0.6.1-current-pack.md)
 use the exact installed JAR and effective captured settings.
+The [final source-pass report](docs/field-reports/powergrid-final-source-passes.md)
+records the completed gameplay coverage and pilot review evidence.
 Its Analysis view and `recipe_analysis.py` provide conservative recipe conflict
 findings and baseline-to-current snapshot comparison; see [recipe analysis](docs/recipe-analysis.md).
 

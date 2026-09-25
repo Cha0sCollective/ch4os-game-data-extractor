@@ -27,3 +27,7 @@ combines those findings with the effective capture. Its 48 GDE references were
 validated as accepted, snapshot-matched records with evidence, then recorded in
 `guide_refs`. The guide is in this GDE repository for pilot review. The
 handbook repository remains unchanged.
+
+The later [final source-pass report](powergrid-final-source-passes.md)
+supersedes this checkpoint's unresolved coverage statuses and 48-reference
+guide count.

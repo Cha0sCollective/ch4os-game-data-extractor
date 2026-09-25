@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from knowledge_store import capture_identity
 
 
-REFERENCE = re.compile(r"powergrid:(?:stage33_revalidated|stage33|source_followup):[a-z0-9_]+")
+REFERENCE = re.compile(r"powergrid:(?:stage33_revalidated|stage33|source_followup|source_completion):[a-z0-9_]+")
 TABLES = {"claim": "claims", "relation": "relations", "formula": "formulas"}
 
 
