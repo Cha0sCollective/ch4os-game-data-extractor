@@ -225,6 +225,14 @@ class Catalog:
                 "claims": [], "relations": [], "formulas": [], "coverage": []}
             return result
 
+    def reviewed_subject(self, kind: str, entry_id: str) -> dict:
+        if kind not in {"system", "interface", "config", "tag", "fluid", "entity", "block", "item", "recipe"} or ":" not in entry_id:
+            raise ValueError("reviewed subject needs a supported kind and namespaced ID")
+        reviewed = self.knowledge.read_subject(self.snapshot_id, kind, entry_id) if self.knowledge else {}
+        if not any(reviewed.get(key) for key in ("claims", "formulas", "relations", "coverage")):
+            raise ValueError("no reviewed knowledge for this subject in the current snapshot")
+        return {"snapshot_id": self.snapshot_id, "subject_kind": kind, "subject_id": entry_id, "reviewed": reviewed}
+
     def _entity_relations(self, db: sqlite3.Connection, kind: str, entry_id: str,
                           block_id: str | None = None) -> list[dict]:
         if not self._has_table(db, "adapter_relations"):

@@ -279,6 +279,10 @@ function relationLine(link, reviewed = false) {
     const button = node("button", "subtle-button", targetId + " →");
     button.type = "button"; button.addEventListener("click", () => jump(targetKind === "item" ? "items" : "recipes", targetId));
     line.append(button);
+  } else if (reviewed && ["system", "interface", "config", "tag", "fluid", "entity", "block"].includes(targetKind)) {
+    const button = node("button", "subtle-button", `${targetKind}: ${targetId} →`);
+    button.type = "button"; button.addEventListener("click", () => selectKnowledge(targetKind, targetId));
+    line.append(button);
   } else line.append(node("span", "", `${targetKind}: ${targetId}`));
   line.append(node("div", "property-meta", `${link.direction || "outgoing"} · ${reviewed ? link.evidence_status.replaceAll("_", " ") : "installed runtime"}${link.adapter_id ? ` · ${link.adapter_id}` : ""}`));
   if (link.conditions && Object.keys(link.conditions).length) line.append(jsonDisclosure("Conditions", link.conditions));
@@ -298,6 +302,47 @@ function jump(kind, id) {
   state.query = id; state.mod = ""; state.type = ""; state.coverage = "all";
   $("#search").value = id; $("#mod-filter").value = ""; $("#type-filter").value = ""; $("#coverage-filter").value = "all";
   setView(kind, true);
+}
+async function selectKnowledge(kind, id) {
+  const previous = state.selected;
+  state.selected = {kind: "knowledge", subjectKind: kind, id}; markSelected();
+  const serial = ++state.detailRequest;
+  try {
+    const record = await request(`/api/knowledge/subject?${new URLSearchParams({kind, id})}`);
+    if (serial !== state.detailRequest) return;
+    const root = node("div");
+    if (previous) {
+      const back = node("button", "subtle-button", `← ${previous.id}`);
+      back.type = "button";
+      back.addEventListener("click", () => previous.kind === "knowledge"
+        ? selectKnowledge(previous.subjectKind, previous.id) : selectRecord(previous.kind, previous.id));
+      root.append(back);
+    }
+    root.append(append(node("div", "detail-head"), node("div", "eyebrow", `REVIEWED ${kind.toUpperCase()}`),
+      node("h2", "", id), node("p", "detail-subtitle", "Shared gameplay knowledge for this capture. Each fact retains its evidence and conditions.")));
+    appendReviewedSpecifications(root, record.reviewed);
+    root.append(section("Relationships", append(node("div", "line-list"),
+      ...record.reviewed.relations.map(link => relationLine(link, true)))));
+    if (record.reviewed.coverage.length) root.append(section("Research coverage", append(node("div", "line-list"),
+      ...record.reviewed.coverage.map(entry => row(entry.area.replaceAll("_", " "), `${entry.status.replaceAll("_", " ")} · ${entry.explanation}`)))));
+    $("#detail-panel").replaceChildren(root);
+  } catch (error) { toast(error.message); }
+}
+function appendReviewedSpecifications(root, reviewed) {
+  const claims = node("div", "line-list");
+  for (const claim of reviewed.claims) {
+    const line = row(claim.predicate.replaceAll("_", " "), `${safeValue(claim.value)}${claim.unit ? ` ${claim.unit}` : ""}`);
+    line.append(node("div", "property-meta", `${claim.evidence_status.replaceAll("_", " ")} · ${claim.evidence_locator}`));
+    if (claim.conditions && Object.keys(claim.conditions).length) line.append(jsonDisclosure("Conditions", claim.conditions));
+    claims.append(line);
+  }
+  for (const formula of reviewed.formulas) {
+    const line = row(formula.result_predicate.replaceAll("_", " "), `Formula · ${formula.unit || "unit unspecified"}`);
+    line.append(node("div", "property-meta", `${formula.evidence_status.replaceAll("_", " ")} · ${formula.evidence_locator}`),
+      jsonDisclosure("Expression and conditions", {expression: formula.expression, conditions: formula.conditions}));
+    claims.append(line);
+  }
+  if (claims.childElementCount) root.append(section(`Reviewed specifications · ${count(claims.childElementCount)}`, claims));
 }
 function itemDetail(item) {
   const root = node("div");
@@ -331,20 +376,7 @@ function itemDetail(item) {
   root.append(section(`Mechanics & properties · ${count(item.properties.length)}`,
     item.properties.length ? properties : node("p", "detail-subtitle", "No item-specific mechanic facts were collected.")));
   const reviewed = item.reviewed || {claims: [], relations: [], formulas: [], coverage: []};
-  const claims = node("div", "line-list");
-  for (const claim of reviewed.claims) {
-    const line = row(claim.predicate.replaceAll("_", " "), `${safeValue(claim.value)}${claim.unit ? ` ${claim.unit}` : ""}`);
-    line.append(node("div", "property-meta", `${claim.evidence_status.replaceAll("_", " ")} · ${claim.evidence_locator}`));
-    if (claim.conditions && Object.keys(claim.conditions).length) line.append(jsonDisclosure("Conditions", claim.conditions));
-    claims.append(line);
-  }
-  for (const formula of reviewed.formulas) {
-    const line = row(formula.result_predicate.replaceAll("_", " "), `Formula · ${formula.unit || "unit unspecified"}`);
-    line.append(node("div", "property-meta", `${formula.evidence_status.replaceAll("_", " ")} · ${formula.evidence_locator}`),
-      jsonDisclosure("Expression and conditions", {expression: formula.expression, conditions: formula.conditions}));
-    claims.append(line);
-  }
-  if (claims.childElementCount) root.append(section(`Reviewed specifications · ${count(claims.childElementCount)}`, claims));
+  appendReviewedSpecifications(root, reviewed);
   const links = [...(item.relations || []).map(link => relationLine(link)),
     ...reviewed.relations.map(link => relationLine(link, true))];
   root.append(section(`Relationships · ${count(links.length)}`, links.length ? append(node("div", "line-list"), ...links) :

@@ -310,6 +310,7 @@ class KnowledgeStore:
             row["conditions"] = json.loads(row.pop("conditions_json"))
         for row in relations:
             row["conditions"] = json.loads(row.pop("conditions_json"))
+            row["direction"] = "outgoing" if (row["subject_kind"], row["subject_id"]) == (kind, subject_id) else "incoming"
         for row in formulas:
             row["expression"] = json.loads(row.pop("expression_json"))
             row["conditions"] = json.loads(row.pop("conditions_json"))

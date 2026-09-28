@@ -85,6 +85,17 @@ the gap by `list_findings`; its original proposal and review history remain
 intact. A new capture does not inherit the resolution. Answering a source
 question does not close an adapter task for data GDE still needs to collect.
 
+## Shared systems and interfaces
+
+Keep a family model's claims and formulas on a namespaced `system` or
+`interface` subject. Add explicit reviewed item-to-model relationships, for
+example `uses_behavior_model`, with their scope and evidence. The viewer opens
+these subjects from relationship links using
+`GET /api/knowledge/subject?kind=system&id=mod:family`; it displays accepted
+knowledge for the current snapshot and links incoming edges back to their
+items. Shared values retain their own conditions and are not automatically
+copied into unconditional item specifications.
+
 ## Offline platform and nested artifact review
 
 Older captures can omit platform artifacts and jar-in-jar implementation mods.

@@ -259,6 +259,8 @@ def handler_for(state: AppState):
                     return self._json(200, catalog.recipe(unquote(path.removeprefix("/api/recipes/"))))
                 if path == "/api/coverage":
                     return self._json(200, catalog.coverage())
+                if path == "/api/knowledge/subject":
+                    return self._json(200, catalog.reviewed_subject(args.get("kind", ""), args.get("id", "")))
                 if path == "/api/knowledge/mod-coverage":
                     mod_id = args.get("mod", "")
                     if not mod_id:
