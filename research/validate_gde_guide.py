@@ -10,13 +10,14 @@ from __future__ import annotations
 import argparse
 from contextlib import closing
 import hashlib
+import json
 from pathlib import Path
 import re
 import sqlite3
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from knowledge_store import capture_identity
+from knowledge_store import artifact_hashes, capture_identity
 
 
 REFERENCE = re.compile(r"powergrid:(?:stage33_revalidated|stage33|source_followup|source_completion):[a-z0-9_]+")
@@ -40,15 +41,14 @@ def validate(capture: Path, knowledge: Path, guide: Path, record_refs: bool = Fa
         db.execute("PRAGMA foreign_keys=ON")
         refs: list[tuple[str, str]] = []
         for identifier in ids:
-            finding = db.execute("SELECT f.status,j.mod_id FROM findings f JOIN research_jobs j "
+            finding = db.execute("SELECT f.status,j.mod_id,f.finding_json FROM findings f JOIN research_jobs j "
                                  "ON j.snapshot_id=f.snapshot_id AND j.id=f.job_id "
                                  "WHERE f.snapshot_id=? AND f.id=?",
                                  (snapshot, identifier)).fetchone()
             if not finding or finding[0] != "accepted":
                 raise ValueError(f"reference is not accepted in this snapshot: {identifier}")
-            artifact_hashes = {row[0] for row in db.execute(
-                "SELECT artifact_sha256 FROM snapshot_artifacts WHERE snapshot_id=? AND mod_id=?",
-                (snapshot, finding[1]))}
+            owner = json.loads(finding[2]).get("evidence", {}).get("mod_id", finding[1])
+            installed_hashes = artifact_hashes(db, snapshot, owner)
             matches = []
             for kind, table in TABLES.items():
                 row = db.execute(f"SELECT evidence_id FROM {table} WHERE snapshot_id=? AND id=?",
@@ -64,9 +64,9 @@ def validate(capture: Path, knowledge: Path, guide: Path, record_refs: bool = Fa
             if not evidence or not evidence[1]:
                 raise ValueError(f"missing accepted evidence: {identifier}")
             evidence_kind, _, artifact_hash, revision = evidence
-            if evidence_kind == "installed_artifact" and artifact_hash not in artifact_hashes:
+            if evidence_kind == "installed_artifact" and artifact_hash not in installed_hashes:
                 raise ValueError(f"evidence artifact differs from installed pack: {identifier}")
-            if evidence_kind == "exact_source" and not (revision and artifact_hash in artifact_hashes):
+            if evidence_kind == "exact_source" and not (revision and artifact_hash in installed_hashes):
                 raise ValueError(f"source revision is not tied to this pack: {identifier}")
             if evidence_kind not in {"installed_artifact", "installed_runtime", "exact_source", "test"}:
                 raise ValueError(f"unknown evidence kind: {identifier}")

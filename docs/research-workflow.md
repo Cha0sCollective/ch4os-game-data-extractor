@@ -76,3 +76,32 @@ in `coverage_history`. A later capture starts a different snapshot and requires
 fresh review. Accepted `adapter_request` findings create open adapter tasks.
 Resolve a task only after recording the capture or test that demonstrates the
 new adapter behavior; the task history stays in the knowledge database.
+
+## Offline platform and nested artifact review
+
+Older captures can omit platform artifacts and jar-in-jar implementation mods.
+`artifact_lineage.py` supplies a reviewed association without rewriting the
+capture or pretending the outer bundle declares its children:
+
+```text
+python artifact_lineage.py --database capture.sqlite --knowledge knowledge.sqlite --artifact server/mods/bundle.jar --kind nested --note "Nested descriptors and hashes inspected"
+python artifact_lineage.py --database capture.sqlite --knowledge knowledge.sqlite --artifact server/libraries/server.jar --kind platform --note "Minecraft version and bundle member inspected"
+```
+
+Nested child hashes must descend from a captured outer hash and their descriptor
+versions must match the loaded mods. Minecraft platform associations compare
+the offline server bundle's version with captured platform metadata and retain
+the inner server hash. They establish a reviewed version association; they do
+not claim that the capture recorded that binary hash. Associations are immutable,
+snapshot scoped, and kept separately from `snapshot_artifacts`. A later capture
+does not inherit them. Source selection still needs its own review.
+
+Cross-mod evidence can name `evidence.mod_id` to identify the implementing mod.
+Acceptance and guide validation check the hash against that owner; the research
+job's mod remains the fallback for older records. This permits an Aeronautics
+finding backed by Sable source, or a Minecraft explanation backed by an installed
+addon. Preserve the original candidate and use a new reviewed ID when changing
+its evidence owner or matching basis. Release-version metadata, relevant source
+and offline artifact inspection can establish the installed-version source basis;
+an embedded build commit or reproduced binary build is not a universal requirement.
+Effective addon activation and pack configuration remain separate questions.

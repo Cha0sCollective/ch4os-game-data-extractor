@@ -34,7 +34,14 @@ def _reviewed(store: KnowledgeStore, snapshot: str, mod: str) -> dict:
             if table == "relations":
                 query += " OR substr(r.object_id,1,instr(r.object_id,':')-1)=?"
                 params.append(mod)
-            result[table] = [_decode(dict(row)) for row in db.execute(query + ") ORDER BY r.id", params)]
+            entries = [_decode(dict(row)) for row in db.execute(query + ") ORDER BY r.id", params)]
+            for entry in entries:
+                finding = db.execute("SELECT finding_json FROM findings WHERE snapshot_id=? AND id=?",
+                                     (snapshot, entry["id"])).fetchone()
+                evidence = json.loads(finding[0]).get("evidence", {}) if finding else {}
+                if "mod_id" in evidence:
+                    entry["evidence_detail"] = evidence
+            result[table] = entries
         result["coverage"] = [dict(row) for row in db.execute(
             "SELECT subject_kind,subject_id,area,status,explanation FROM coverage "
             "WHERE snapshot_id=? AND substr(subject_id,1,instr(subject_id,':')-1)=? ORDER BY subject_kind,subject_id,area",

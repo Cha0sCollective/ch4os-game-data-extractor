@@ -10,6 +10,7 @@ from contextlib import closing, contextmanager
 import hashlib
 import json
 from pathlib import Path
+import re
 import sqlite3
 
 
@@ -34,6 +35,14 @@ CREATE TABLE IF NOT EXISTS snapshot_artifacts (
     artifact_sha256 TEXT NOT NULL,
     file_name TEXT NOT NULL,
     PRIMARY KEY (snapshot_id, mod_id, artifact_sha256)
+);
+CREATE TABLE IF NOT EXISTS reviewed_artifact_links (
+    snapshot_id TEXT NOT NULL,
+    mod_id TEXT NOT NULL,
+    artifact_sha256 TEXT NOT NULL,
+    link_json TEXT NOT NULL,
+    PRIMARY KEY (snapshot_id, mod_id, artifact_sha256),
+    FOREIGN KEY (snapshot_id, mod_id) REFERENCES snapshot_mods(snapshot_id, mod_id)
 );
 CREATE TABLE IF NOT EXISTS evidence (
     snapshot_id TEXT NOT NULL REFERENCES snapshots(id),
@@ -171,6 +180,24 @@ CREATE INDEX IF NOT EXISTS adapter_tasks_by_mod ON adapter_tasks(snapshot_id, mo
 
 def _canonical(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def artifact_hashes(db: sqlite3.Connection, snapshot_id: str, mod_id: str | None = None) -> set[str]:
+    """Captured artifacts plus explicitly reviewed, snapshot-scoped lineage.
+
+    Read older knowledge databases without requiring a schema migration.
+    """
+    result = set()
+    for table in ("snapshot_artifacts", "reviewed_artifact_links"):
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+            continue
+        query = f"SELECT artifact_sha256 FROM {table} WHERE snapshot_id=?"
+        params = [snapshot_id]
+        if mod_id is not None:
+            query += " AND mod_id=?"
+            params.append(mod_id)
+        result.update(row[0] for row in db.execute(query, params))
+    return result
 
 
 def capture_identity(capture_db: Path) -> tuple[str, dict, list[tuple[str, str | None]]]:
@@ -315,6 +342,43 @@ class KnowledgeStore:
             db.execute("INSERT OR IGNORE INTO research_jobs (snapshot_id,id,mod_id,subsystem,packet_json) "
                        "VALUES (?,?,?,?,?)", (packet["snapshot_id"], packet["job_id"], packet["mod_id"],
                                              packet["subsystem"], encoded))
+
+    def review_artifact_links(self, capture_db: Path, links: list[dict], note: str) -> None:
+        """Retain an offline review separately from the authenticated capture.
+
+        Call artifact_lineage inspectors to construct links from actual bytes.
+        Platform links establish the captured version, not a captured binary hash.
+        """
+        snapshot_id = capture_identity(capture_db)[0]
+        if not isinstance(note, str) or not note.strip():
+            raise ValueError("artifact review needs a note")
+        with self.connect() as db:
+            for link in links:
+                mod = db.execute("SELECT version FROM snapshot_mods WHERE snapshot_id=? AND mod_id=?",
+                                 (snapshot_id, link.get("mod_id"))).fetchone()
+                if mod is None or mod[0] != link.get("version"):
+                    raise ValueError("artifact module/version differs from this snapshot")
+                if not re.fullmatch(r"[a-f0-9]{64}", link.get("artifact_sha256", "")):
+                    raise ValueError("artifact link needs a SHA-256")
+                if link.get("kind") == "nested":
+                    if db.execute("SELECT 1 FROM snapshot_artifacts WHERE snapshot_id=? AND artifact_sha256=?",
+                                  (snapshot_id, link.get("root_sha256"))).fetchone() is None:
+                        raise ValueError("nested artifact root is not installed in this snapshot")
+                    if not link.get("entry_path") or not link.get("parent_sha256"):
+                        raise ValueError("nested artifact needs parent and entry lineage")
+                elif link.get("kind") == "platform_version":
+                    if link.get("mod_id") != "minecraft" or link.get("metadata_version") != mod[0]:
+                        raise ValueError("platform artifact version differs from captured Minecraft")
+                else:
+                    raise ValueError("unsupported artifact link kind")
+                reviewed = {**link, "snapshot_id": snapshot_id, "review_note": note}
+                encoded = _canonical(reviewed)
+                key = (snapshot_id, link["mod_id"], link["artifact_sha256"])
+                old = db.execute("SELECT link_json FROM reviewed_artifact_links WHERE snapshot_id=? "
+                                 "AND mod_id=? AND artifact_sha256=?", key).fetchone()
+                if old and old[0] != encoded:
+                    raise ValueError("reviewed artifact link is immutable")
+                db.execute("INSERT OR IGNORE INTO reviewed_artifact_links VALUES (?,?,?,?)", (*key, encoded))
 
     def list_jobs(self, snapshot_id: str, mod_id: str = "") -> list[dict]:
         with self.connect() as db:
@@ -498,14 +562,15 @@ class KnowledgeStore:
         if evidence["kind"] == "exact_source":
             if not evidence.get("source_revision") or evidence.get("match_basis") != "exact_installed_version":
                 raise ValueError("source fact needs an exact installed-version match and revision")
-            matched = db.execute("SELECT 1 FROM snapshot_artifacts WHERE snapshot_id=? AND mod_id=? AND artifact_sha256=?",
-                                 (snapshot_id, mod_id, evidence.get("artifact_sha256"))).fetchone()
-            if matched is None:
+            owner = evidence.get("mod_id", mod_id)
+            if not isinstance(owner, str) or not owner.strip():
+                raise ValueError("source evidence needs a module owner")
+            if evidence.get("artifact_sha256") not in artifact_hashes(db, snapshot_id, owner):
                 raise ValueError("source artifact SHA-256 is not installed for this mod in this snapshot")
         if evidence["kind"] == "installed_artifact":
-            matched = db.execute("SELECT 1 FROM snapshot_artifacts WHERE snapshot_id=? AND artifact_sha256=?",
-                                 (snapshot_id, evidence.get("artifact_sha256"))).fetchone()
-            if matched is None:
+            if "mod_id" in evidence and (not isinstance(evidence["mod_id"], str) or not evidence["mod_id"].strip()):
+                raise ValueError("artifact evidence needs a module owner")
+            if evidence.get("artifact_sha256") not in artifact_hashes(db, snapshot_id, evidence.get("mod_id")):
                 raise ValueError("artifact evidence does not match this snapshot")
         if evidence["kind"] == "installed_runtime" and not locator.startswith("capture/"):
             raise ValueError("runtime evidence locator must name a capture record")

@@ -1,0 +1,118 @@
+from contextlib import closing
+import hashlib
+from io import BytesIO
+import json
+from pathlib import Path
+import sqlite3
+from tempfile import TemporaryDirectory
+import unittest
+from zipfile import ZipFile
+
+from artifact_lineage import inspect_nested, inspect_platform
+from game_data_db import import_capture
+from knowledge_store import KnowledgeStore, artifact_hashes
+from research.validate_gde_guide import validate
+from test_game_data_db import capture
+
+
+def jar(entries):
+    data = BytesIO()
+    with ZipFile(data, "w") as archive:
+        for name, value in entries.items():
+            archive.writestr(name, value)
+    return data.getvalue()
+
+
+class ArtifactLineageTests(unittest.TestCase):
+    def fixture(self, root, child_version="2.0"):
+        child = jar({"META-INF/neoforge.mods.toml":
+                     f'[[mods]]\nmodId="child"\nversion="{child_version}"\n'})
+        outer = jar({"META-INF/jarjar/metadata.json": json.dumps({"jars": [{"path": "META-INF/jarjar/child.jar"}]}),
+                     "META-INF/jarjar/child.jar": child})
+        artifact = root / "outer.jar"
+        artifact.write_bytes(outer)
+        source, database = root / "capture.zip", root / "capture.sqlite"
+        capture(source, artifacts=True)
+        import_capture(source, database)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute("INSERT INTO mods(id,name,version) VALUES ('child','Child','2.0')")
+            db.execute("INSERT INTO mods(id,name,version) VALUES ('minecraft','Minecraft','1.21.1')")
+            provenance = json.loads(db.execute("SELECT provenance_json FROM capture").fetchone()[0])
+            provenance["minecraft_version"] = "1.21.1"
+            db.execute("UPDATE capture SET provenance_json=?", (json.dumps(provenance),))
+            db.execute("UPDATE installed_artifacts SET sha256=?", (hashlib.sha256(outer).hexdigest(),))
+        store = KnowledgeStore(root / "knowledge.sqlite")
+        snapshot = store.register_capture(database)
+        job = {"snapshot_id": snapshot, "job_id": "job", "mod_id": "example", "subsystem": "cross-mod"}
+        store.add_job(job)
+        return database, store, snapshot, artifact
+
+    def test_nested_owner_acceptance_and_guide_snapshot_separation(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            database, store, snapshot, artifact = self.fixture(root)
+            links = inspect_nested(database, artifact)
+            self.assertEqual(links[0]["mod_id"], "child")
+            store.review_artifact_links(database, links, "Read nested descriptor and captured outer hash")
+            finding = {"format": "ch4os-research-finding-v1", "snapshot_id": snapshot, "job_id": "job",
+                       "finding_id": "example:cross_mod", "record_type": "claim", "subject_kind": "item",
+                       "subject_id": "example:ore", "predicate": "behavior", "value": "child implementation",
+                       "evidence": {"kind": "exact_source", "mod_id": "child", "locator": "Child.java#behavior",
+                                    "artifact_sha256": links[0]["artifact_sha256"], "source_revision": "a" * 40,
+                                    "match_basis": "exact_installed_version"}}
+            store.submit_finding(finding)
+            store.review_finding(snapshot, finding["finding_id"], "accept", database)
+            guide = root / "guide.md"
+            guide.write_text(f"<!-- gde-snapshot: {snapshot} -->\n<!-- gde-ref: example:cross_mod -->")
+            self.assertEqual(validate(database, store.path, guide)["references"], 1)
+            finding = {**finding, "finding_id": "example:wrong_owner", "evidence": {**finding["evidence"], "mod_id": "example"}}
+            store.submit_finding(finding)
+            with self.assertRaisesRegex(ValueError, "not installed"):
+                store.review_finding(snapshot, finding["finding_id"], "accept", database)
+            with closing(sqlite3.connect(database)) as db, db:
+                db.execute("UPDATE mods SET version='3.0' WHERE id='child'")
+            newer = store.register_capture(database)
+            with store.connect() as db:
+                self.assertNotIn(links[0]["artifact_sha256"], artifact_hashes(db, newer, "child"))
+
+    def test_nested_root_and_version_mismatch(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            database, store, snapshot, artifact = self.fixture(root, "3.0")
+            with self.assertRaisesRegex(ValueError, "version differs"):
+                inspect_nested(database, artifact)
+            artifact.write_bytes(jar({"META-INF/jarjar/metadata.json": '{"jars":[]}'}))
+            with self.assertRaisesRegex(ValueError, "not in this capture"):
+                inspect_nested(database, artifact)
+            with self.assertRaisesRegex(ValueError, "root is not installed"):
+                store.review_artifact_links(database, [{"kind": "nested", "mod_id": "child", "version": "2.0",
+                    "artifact_sha256": "c" * 64, "root_sha256": "b" * 64, "parent_sha256": "b" * 64,
+                    "entry_path": "other.jar!/child.jar"}], "review")
+
+    def test_platform_version_is_reviewed_separately_and_immutable(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            database, store, snapshot, _ = self.fixture(root)
+            server = jar({"net/minecraft/server/Main.class": "fixture"})
+            sha = hashlib.sha256(server).hexdigest()
+            platform = root / "server.jar"
+            def write(version):
+                platform.write_bytes(jar({"version.json": json.dumps({"id": version}),
+                    "META-INF/versions.list": f"{sha}\t{version}\t{version}/server.jar\n",
+                    f"META-INF/versions/{version}/server.jar": server}))
+            write("1.21.1")
+            links = inspect_platform(database, platform)
+            store.review_artifact_links(database, links, "Version and server member inspected offline")
+            store.review_artifact_links(database, links, "Version and server member inspected offline")
+            with store.connect() as db:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM snapshot_artifacts WHERE mod_id='minecraft'").fetchone()[0], 0)
+                self.assertIn(links[0]["artifact_sha256"], artifact_hashes(db, snapshot, "minecraft"))
+            with self.assertRaisesRegex(ValueError, "immutable"):
+                store.review_artifact_links(database, links, "changed review")
+            write("1.21.2")
+            with self.assertRaisesRegex(ValueError, "version differs"):
+                inspect_platform(database, platform)
+
+
+if __name__ == "__main__":
+    unittest.main()
