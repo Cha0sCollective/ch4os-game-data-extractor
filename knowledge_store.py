@@ -377,6 +377,10 @@ class KnowledgeStore:
                 elif link.get("kind") == "platform_version":
                     if link.get("mod_id") != "minecraft" or link.get("metadata_version") != mod[0]:
                         raise ValueError("platform artifact version differs from captured Minecraft")
+                elif link.get("kind") == "loader_version":
+                    if (link.get("mod_id") != "neoforge" or link.get("metadata_version") != mod[0]
+                            or link.get("descriptor") != "META-INF/neoforge.mods.toml"):
+                        raise ValueError("loader artifact version differs from captured NeoForge")
                 else:
                     raise ValueError("unsupported artifact link kind")
                 reviewed = {**link, "snapshot_id": snapshot_id, "review_note": note}

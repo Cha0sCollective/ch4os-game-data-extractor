@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from zipfile import ZipFile
 
-from artifact_lineage import inspect_nested, inspect_platform
+from artifact_lineage import inspect_nested, inspect_platform, inspect_loader
 from game_data_db import import_capture
 from knowledge_store import KnowledgeStore, artifact_hashes
 from research.validate_gde_guide import validate
@@ -112,6 +112,61 @@ class ArtifactLineageTests(unittest.TestCase):
             write("1.21.2")
             with self.assertRaisesRegex(ValueError, "version differs"):
                 inspect_platform(database, platform)
+
+    def test_loader_source_evidence_requires_review_and_stays_snapshot_scoped(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            database, _, _, _ = self.fixture(root)
+            with closing(sqlite3.connect(database)) as db, db:
+                db.execute("INSERT INTO mods(id,name,version) VALUES ('neoforge','NeoForge','21.1.248')")
+                provenance = json.loads(db.execute("SELECT provenance_json FROM capture").fetchone()[0])
+                provenance["neoforge_version"] = "21.1.248"
+                db.execute("UPDATE capture SET provenance_json=?", (json.dumps(provenance),))
+            store = KnowledgeStore(root / "loader-knowledge.sqlite")
+            snapshot = store.register_capture(database)
+            store.add_job({"snapshot_id": snapshot, "job_id": "loader", "mod_id": "example", "subsystem": "fluids"})
+            library = root / "loader.jar"
+
+            def write(version, system="neoforge", entrypoint=True):
+                entries = {"META-INF/neoforge.mods.toml": f'[[mods]]\nmodId="neoforge"\nversion="{version}"\n',
+                           "META-INF/MANIFEST.MF": f"Manifest-Version: 1.0\r\nFML-System-Mods: {system}\r\n\r\n"
+                           f"Name: net/neoforged/neoforge/internal/versions/neoforge/\r\nImplementation-Version: {version}\r\n"}
+                if entrypoint:
+                    entries["net/neoforged/neoforge/internal/versions/neoforge/NeoForgeVersion.class"] = "fixture"
+                library.write_bytes(jar(entries))
+
+            write("21.1.248")
+            links = inspect_loader(database, library)
+            finding = {"format": "ch4os-research-finding-v1", "snapshot_id": snapshot, "job_id": "loader",
+                       "finding_id": "example:loader_fluid", "record_type": "claim", "subject_kind": "item",
+                       "subject_id": "example:ore", "predicate": "fluid_wrapper", "value": "source rule",
+                       "evidence": {"kind": "installed_artifact", "mod_id": "neoforge", "locator": "FluidTank.class",
+                                    "artifact_sha256": links[0]["artifact_sha256"]}}
+            store.submit_finding(finding)
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                store.review_finding(snapshot, finding["finding_id"], "accept", database)
+            store.review_artifact_links(database, links, "Offline system-module association; hash not captured")
+            store.review_finding(snapshot, finding["finding_id"], "accept", database)
+            reviewed = store.read_subject(snapshot, "item", "example:ore")
+            self.assertEqual(reviewed["claims"][0]["evidence_status"], "source_derived")
+            with store.connect() as db:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM snapshot_artifacts WHERE mod_id='neoforge'").fetchone()[0], 0)
+            write("21.1.249")
+            with self.assertRaisesRegex(ValueError, "version differs"):
+                inspect_loader(database, library)
+            write("21.1.248", system="unrelated")
+            with self.assertRaisesRegex(ValueError, "system-module"):
+                inspect_loader(database, library)
+            write("21.1.248", entrypoint=False)
+            with self.assertRaisesRegex(ValueError, "system-module"):
+                inspect_loader(database, library)
+            with closing(sqlite3.connect(database)) as db, db:
+                db.execute("UPDATE mods SET version='21.1.249' WHERE id='neoforge'")
+                provenance["neoforge_version"] = "21.1.249"
+                db.execute("UPDATE capture SET provenance_json=?", (json.dumps(provenance),))
+            newer = store.register_capture(database)
+            with store.connect() as db:
+                self.assertNotIn(links[0]["artifact_sha256"], artifact_hashes(db, newer, "neoforge"))
 
 
 if __name__ == "__main__":

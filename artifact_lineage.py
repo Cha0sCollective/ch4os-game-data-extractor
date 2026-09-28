@@ -90,16 +90,50 @@ def inspect_platform(capture: Path, path: Path) -> list[dict]:
              "basis": "offline server bundle version matched to captured platform; binary hash was not captured"}]
 
 
+def inspect_loader(capture: Path, path: Path) -> list[dict]:
+    """Associate an offline NeoForge library with the captured loader version.
+
+    This does not imply that its binary hash was recorded by the capture.
+    Require the system-mod descriptor, manifest version and loader entrypoint,
+    rather than accepting a filename or a version string in an arbitrary ZIP.
+    """
+    _, provenance, installed = capture_identity(capture)
+    version = dict(installed).get("neoforge")
+    if not version or provenance.get("neoforge_version") != version:
+        raise ValueError("captured NeoForge module/provenance version differs")
+    data = path.read_bytes()
+    descriptor = "META-INF/neoforge.mods.toml"
+    with ZipFile(BytesIO(data)) as archive:
+        manifest = archive.read("META-INF/MANIFEST.MF").decode("utf-8").replace("\r\n", "\n")
+        modules = tomllib.loads(archive.read(descriptor).decode("utf-8")).get("mods", [])
+        selected = [mod for mod in modules if mod.get("modId") == "neoforge"]
+        if len(selected) != 1 or selected[0].get("version") != version:
+            raise ValueError("loader artifact version differs from captured NeoForge")
+        sections = [dict(line.split(": ", 1) for line in section.splitlines() if ": " in line)
+                    for section in manifest.split("\n\n")]
+        section = next((entry for entry in sections
+                        if entry.get("Name") == "net/neoforged/neoforge/internal/versions/neoforge/"), {})
+        if ("neoforge" not in sections[0].get("FML-System-Mods", "").split(",")
+                or section.get("Implementation-Version") != version
+                or "net/neoforged/neoforge/internal/versions/neoforge/NeoForgeVersion.class" not in archive.namelist()):
+            raise ValueError("loader artifact lacks matching NeoForge system-module metadata")
+    return [{"kind": "loader_version", "mod_id": "neoforge", "version": version,
+             "metadata_version": version, "artifact_sha256": hashlib.sha256(data).hexdigest(),
+             "file_name": path.name, "descriptor": descriptor,
+             "basis": "offline loader system-module/version matched to captured NeoForge; binary hash was not captured"}]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--knowledge", type=Path, required=True)
     parser.add_argument("--artifact", type=Path, required=True)
-    parser.add_argument("--kind", choices=("nested", "platform"), required=True)
+    parser.add_argument("--kind", choices=("nested", "platform", "loader"), required=True)
     parser.add_argument("--note", required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    links = (inspect_nested if args.kind == "nested" else inspect_platform)(args.database, args.artifact)
+    inspector = {"nested": inspect_nested, "platform": inspect_platform, "loader": inspect_loader}[args.kind]
+    links = inspector(args.database, args.artifact)
     store = KnowledgeStore(args.knowledge)
     store.register_capture(args.database)
     store.review_artifact_links(args.database, links, args.note)

@@ -12,6 +12,12 @@ loaded mod list. Importing the same capture again reuses the snapshot; another
 capture gets a new snapshot and pending revalidation for previously researched
 mods. Findings are never copied forward automatically.
 
+Offline loader libraries can supply source evidence when their system-module
+descriptor and manifest match the captured NeoForge version. Use
+`artifact_lineage.py --kind loader` to record the reviewed association. This
+remains distinct from a binary hash recorded by the capture and does not carry
+forward to another snapshot. Source-derived library claims retain their owner.
+
 In the viewer, choose **Research**, select a mod, and prepare jobs. A packet
 directory contains `manifest.json`, one shared `context.json`, and small
 read-only source-route packets. It includes installed artifact SHA-256 values,
