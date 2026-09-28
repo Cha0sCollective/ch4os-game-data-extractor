@@ -162,6 +162,13 @@ CREATE TABLE IF NOT EXISTS findings (
     FOREIGN KEY (snapshot_id, job_id) REFERENCES research_jobs(snapshot_id, id)
 );
 CREATE INDEX IF NOT EXISTS findings_by_status ON findings(snapshot_id, status, job_id);
+CREATE TABLE IF NOT EXISTS gap_resolutions (
+    snapshot_id TEXT NOT NULL,
+    finding_id TEXT NOT NULL,
+    resolution_json TEXT NOT NULL,
+    PRIMARY KEY (snapshot_id, finding_id),
+    FOREIGN KEY (snapshot_id, finding_id) REFERENCES findings(snapshot_id, id)
+);
 CREATE TABLE IF NOT EXISTS adapter_tasks (
     snapshot_id TEXT NOT NULL REFERENCES snapshots(id),
     finding_id TEXT NOT NULL,
@@ -442,8 +449,40 @@ class KnowledgeStore:
             for row in db.execute(query + " ORDER BY j.mod_id,f.job_id,f.id", params):
                 entry = dict(row)
                 entry["finding"] = json.loads(entry.pop("finding_json"))
+                if entry["record_type"] == "gap":
+                    resolved = db.execute("SELECT resolution_json FROM gap_resolutions "
+                                          "WHERE snapshot_id=? AND finding_id=?", (snapshot_id, entry["id"])).fetchone()
+                    if resolved:
+                        entry["resolution"] = json.loads(resolved[0])
                 result.append(entry)
             return result
+
+    def resolve_gap(self, snapshot_id: str, finding_id: str, record_ids: list[str], note: str) -> None:
+        """Close a reviewed question with accepted evidence, preserving its original proposal."""
+        if not isinstance(note, str) or not note.strip() or not isinstance(record_ids, list) or not record_ids:
+            raise ValueError("gap resolution needs accepted record IDs and a review note")
+        if not all(isinstance(key, str) and key.strip() for key in record_ids):
+            raise ValueError("gap resolution needs valid record IDs")
+        with self.connect() as db:
+            gap = db.execute("SELECT record_type,status FROM findings WHERE snapshot_id=? AND id=?",
+                             (snapshot_id, finding_id)).fetchone()
+            if not gap or tuple(gap) != ("gap", "accepted"):
+                raise ValueError("accepted gap not found in this snapshot")
+            for key in sorted(set(record_ids)):
+                record = db.execute("SELECT record_type,status FROM findings WHERE snapshot_id=? AND id=?",
+                                    (snapshot_id, key)).fetchone()
+                if not record or record[1] != "accepted" or record[0] not in {"claim", "formula", "relation"}:
+                    raise ValueError("gap resolution reference must be an accepted fact in this snapshot")
+                table = {"claim": "claims", "formula": "formulas", "relation": "relations"}[record[0]]
+                if not db.execute(f"SELECT 1 FROM {table} r JOIN evidence e ON e.snapshot_id=r.snapshot_id "
+                                  "AND e.id=r.evidence_id WHERE r.snapshot_id=? AND r.id=?", (snapshot_id, key)).fetchone():
+                    raise ValueError("gap resolution reference lacks reviewed evidence")
+            encoded = _canonical({"record_ids": sorted(set(record_ids)), "note": note.strip()})
+            old = db.execute("SELECT resolution_json FROM gap_resolutions WHERE snapshot_id=? AND finding_id=?",
+                             (snapshot_id, finding_id)).fetchone()
+            if old and old[0] != encoded:
+                raise ValueError("gap resolution is immutable; record changed evidence in a new snapshot")
+            db.execute("INSERT OR IGNORE INTO gap_resolutions VALUES (?,?,?)", (snapshot_id, finding_id, encoded))
 
     def list_adapter_tasks(self, snapshot_id: str, mod_id: str = "") -> list[dict]:
         query = "SELECT * FROM adapter_tasks WHERE snapshot_id=?"

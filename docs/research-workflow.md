@@ -77,6 +77,14 @@ fresh review. Accepted `adapter_request` findings create open adapter tasks.
 Resolve a task only after recording the capture or test that demonstrates the
 new adapter behavior; the task history stays in the knowledge database.
 
+An accepted research gap can be answered through
+`KnowledgeStore.resolve_gap(snapshot_id, finding_id, record_ids, note)`.
+The references must be accepted claims, formulas or relationships with reviewed
+evidence in that same snapshot. The immutable resolution is returned alongside
+the gap by `list_findings`; its original proposal and review history remain
+intact. A new capture does not inherit the resolution. Answering a source
+question does not close an adapter task for data GDE still needs to collect.
+
 ## Offline platform and nested artifact review
 
 Older captures can omit platform artifacts and jar-in-jar implementation mods.
