@@ -15,6 +15,15 @@ context. `source` contains a GitHub `repository`, full commit `revision`,
 preparation; a matching version string alone is not promoted into accepted
 source evidence.
 
+Use `related_config_fields` to include effective settings owned by another
+installed mod, for example `{"create": ["fluidTankCapacity"]}` when researching
+Diesel Generators oil barrels. The handoff retains each setting's owning mod,
+capture record locator and effective value. Missing requested settings fail
+preparation explicitly; the exporter does not substitute upstream defaults or
+a same-named primary-mod setting. Tasks without this option retain their
+existing packet shape and bytes. Add dependency settings in a new assignment
+directory rather than rewriting an already issued handoff.
+
 The [handbook's first task](https://github.com/Cha0sCollective/Ch4oS-Handbook/blob/main/research/assignments/diesel-engines-and-fuels/task.json)
 is a concrete example. Source selection and questions are reviewer inputs;
 the exporter does not guess the correct release from a moving branch.

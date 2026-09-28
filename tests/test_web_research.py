@@ -104,6 +104,44 @@ class WebResearchTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "item not found"):
                 build_handoff(database, store, bad)
 
+    def test_dependency_config_keeps_owner_value_and_capture_evidence(self):
+        with TemporaryDirectory() as folder:
+            database, store = self.setup_capture(Path(folder))
+            with closing(sqlite3.connect(database)) as db, db:
+                db.execute("INSERT INTO mods VALUES ('dependency','Dependency','1.0')")
+                db.execute("INSERT INTO config_values(mod_id,config_scope,config_path,field_name,"
+                           "effective_value_json,unit_hint,evidence_status,source_api) "
+                           "VALUES ('dependency','server','server.fluids','tankCapacity','8','bucket',"
+                           "'installed_runtime_confirmed','DependencyConfig.tankCapacity.get')")
+            before = hashlib.sha256(database.read_bytes()).hexdigest()
+            ordinary, _ = build_handoff(database, store, task())
+            self.assertNotIn("related_effective_config", ordinary)
+            selected = task()
+            selected["related_config_fields"] = {"dependency": ["tankCapacity"]}
+            first = write_handoff(database, store, selected, Path(folder) / "dependency-handoff")
+            self.assertEqual(first, write_handoff(database, store, selected, Path(folder) / "dependency-handoff"))
+            context = json.loads((Path(folder) / "dependency-handoff/context.json").read_text())
+            config = context["related_effective_config"][0]
+            self.assertEqual((config["mod_id"], config["effective_value"]), ("dependency", 8))
+            self.assertEqual(config["evidence_locator"], "capture/config_values/" + str(config["id"]))
+            handoff = (Path(folder) / "dependency-handoff/handoff.md").read_text()
+            self.assertIn("Effective dependency configuration", handoff)
+            self.assertIn(config["evidence_locator"], handoff)
+            self.assertEqual(before, hashlib.sha256(database.read_bytes()).hexdigest())
+
+    def test_dependency_config_does_not_substitute_the_primary_mod_setting(self):
+        with TemporaryDirectory() as folder:
+            database, store = self.setup_capture(Path(folder))
+            with closing(sqlite3.connect(database)) as db, db:
+                db.execute("INSERT INTO config_values(mod_id,config_scope,config_path,field_name,"
+                           "effective_value_json,evidence_status,source_api) "
+                           "VALUES ('example','server','fluids','tankCapacity','99',"
+                           "'installed_runtime_confirmed','ExampleConfig.get')")
+            selected = task()
+            selected["related_config_fields"] = {"missing_dependency": ["tankCapacity"]}
+            with self.assertRaisesRegex(ValueError, "absent for missing_dependency"):
+                build_handoff(database, store, selected)
+
 
 if __name__ == "__main__":
     unittest.main()

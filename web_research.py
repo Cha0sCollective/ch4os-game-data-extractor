@@ -156,6 +156,25 @@ def build_handoff(capture: Path, store: KnowledgeStore, task: dict) -> tuple[dic
             missing = wanted - {row["field_name"] for row in configs}
             if missing:
                 raise ValueError(f"selected config fields are absent: {sorted(missing)}")
+        related_configs = []
+        related_fields = task.get("related_config_fields", {})
+        if not isinstance(related_fields, dict):
+            raise ValueError("related_config_fields must map mod IDs to selected field names")
+        for owner, fields in sorted(related_fields.items()):
+            if (not isinstance(owner, str) or not owner.strip() or not isinstance(fields, list)
+                    or not fields or not all(isinstance(field, str) and field.strip() for field in fields)):
+                raise ValueError("related config selection needs a mod ID and nonempty field names")
+            wanted = set(fields)
+            rows = [_decode(dict(row)) for row in db.execute(
+                "SELECT id,mod_id,config_scope,config_path,field_name,effective_value_json,"
+                "unit_hint,evidence_status,source_api FROM config_values WHERE mod_id=? "
+                "ORDER BY config_scope,config_path,field_name", (owner,)) if row["field_name"] in wanted]
+            missing = wanted - {row["field_name"] for row in rows}
+            if missing:
+                raise ValueError(f"related config fields are absent for {owner}: {sorted(missing)}")
+            for row in rows:
+                row["evidence_locator"] = "capture/config_values/" + str(row["id"])
+            related_configs.extend(rows)
         definitions = []
         if catalog._has_table(db, "adapter_definitions"):
             for row in db.execute("SELECT adapter_id,kind,id,status,attributes_json,conditions_json,"
@@ -205,6 +224,9 @@ def build_handoff(capture: Path, store: KnowledgeStore, task: dict) -> tuple[dic
                "pending_findings": store.list_findings(catalog.snapshot_id, mod_id),
                "adapter_tasks": store.list_adapter_tasks(catalog.snapshot_id, mod_id),
                "recipe_scope": "effective loaded recipes involving selected entries, fluids or explicit recipe IDs"}
+    # Keep previously issued packets byte-stable when no dependency config was selected.
+    if related_fields:
+        context["related_effective_config"] = related_configs
     context_hash = hashlib.sha256((_canonical(context) + "\n").encode()).hexdigest()
     job_id = hashlib.sha256((_canonical(task) + ":" + context_hash).encode()).hexdigest()[:20]
     packet = {"format": "ch4os-research-job-v1", "snapshot_id": catalog.snapshot_id,
@@ -230,6 +252,8 @@ def render_context(context: dict) -> str:
                 ("Adapter tasks", "adapter_tasks"), ("Full mod item inventory (scope reference)", "mod_item_inventory"),
                 ("Blocks without inventory items", "non_item_blocks"),
                 ("Installed mod identities (integration scope)", "installed_mods")]
+    if "related_effective_config" in context:
+        sections.insert(2, ("Effective dependency configuration", "related_effective_config"))
     for title, key in sections:
         value = context[key]
         if key in {"installed_mods", "mod_item_inventory"}:
