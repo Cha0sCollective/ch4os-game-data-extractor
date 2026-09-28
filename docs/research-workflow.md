@@ -1,5 +1,10 @@
 # Reviewed research in GDE
 
+For ordinary web chats, use the [GitHub-based handoff exporter](web-research.md).
+It selects one gameplay assignment and supplies readable effective pack context,
+including reviewed knowledge. The original class-route queue below remains
+available for local source-analysis work.
+
 GDE keeps the imported capture database reproducible from its ZIP. The separate
 `knowledge.sqlite` in the local app's data directory holds reviewed facts by
 capture snapshot. Snapshot IDs hash the authenticated capture evidence and

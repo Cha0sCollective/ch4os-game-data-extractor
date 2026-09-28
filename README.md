@@ -31,6 +31,11 @@ The Research view prepares bounded source-analysis packets and reviews proposed
 facts into a persistent, snapshot-scoped GDE knowledge database. Item pages
 show all captured relationships and accepted source-derived claims with their
 evidence labels. See [reviewed research workflow](docs/research-workflow.md).
+`web_research.py` prepares focused GitHub-based handoffs for ordinary web chats,
+with readable pack context and registered GDE job IDs. It also exports installed
+mod inventories and reviewed knowledge for the new
+[Ch4oS Handbook](https://github.com/Cha0sCollective/Ch4oS-Handbook).
+See [web research handoffs](docs/web-research.md).
 The current Power Grid 0.6.1 pilot is recorded in
 [the stage-33 field report](docs/field-reports/powergrid-pilot-stage33.md).
 Its [source-led follow-up](docs/field-reports/powergrid-source-followup.md)
